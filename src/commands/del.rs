@@ -10,6 +10,8 @@ pub fn run(config: Config, service: &str, account: &str) -> Result<(), crate::re
     }
 
     if let Some(alt) = pick_one(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout(),
         "found multiple matches for the given service/account combination",
         alternatives.iter()
     ) {

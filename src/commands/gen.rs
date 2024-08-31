@@ -14,6 +14,8 @@ pub fn run(
     }
 
     if let Some(alt) = pick_one(
+        &mut std::io::stdin().lock(),
+        &mut std::io::stdout(),
         "found multiple matches for the given service/account combination",
         alternatives.iter()
     ) {
