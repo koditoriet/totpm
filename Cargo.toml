@@ -1,0 +1,21 @@
+[package]
+name = "totpm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.16", features = ["derive"] }
+dbus = "0.9.7"
+log = "0.4.22"
+rand = "0.8.5"
+rpassword = "7.3.1"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+serde = "1.0.208"
+serde_derive = "1.0.208"
+stderrlog = "0.6.0"
+toml = "0.8.19"
+tss-esapi = "7.5.1"
+
+[profile.release]
+strip = true
+lto = true
