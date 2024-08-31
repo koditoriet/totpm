@@ -52,3 +52,82 @@ pub fn decode(base32: &str) -> Option<Vec<u8>> {
     };
     Some(buffer.to_bytes())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_decodes_valid_base32() {
+        assert_eq!(
+            decode("NBSWY3DP"),
+            Some("hello".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode("OBXXIYLUN4======"),
+            Some("potato".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode("OBXXIYLUN4"),
+            Some("potato".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode(""),
+            Some("".as_bytes().to_vec()),
+        );
+    }
+
+    #[test]
+    fn decode_returns_none_on_invalid_char() {
+        assert_eq!(
+            decode("NBSWY3D?"),
+            None,
+        );
+        assert_eq!(
+            decode("xBSWY3DP"),
+            None,
+        );
+    }
+
+    #[test]
+    fn bit_buffer_writes_left_to_right() {
+        let mut buf = BitBuffer::new();
+        buf.write(1u8, 1);
+        buf.write(64u8, 7);
+        assert_eq!(
+            buf.to_bytes(),
+            vec![0xc0],
+        );
+    }
+
+    #[test]
+    fn bit_buffer_properly_handles_writes_across_byte_boundaries() {
+        let mut buf = BitBuffer::new();
+        buf.write(1u8, 4);
+        buf.write(72u8, 8);
+        buf.write(1u8, 4);
+        assert_eq!(
+            buf.to_bytes(),
+            vec![0x14, 0x81],
+        );
+    }
+
+    #[test]
+    fn bit_buffer_discards_incomplete_bytes() {
+        let mut buf = BitBuffer::new();
+        buf.write(1u8, 1);
+        assert_eq!(
+            buf.to_bytes(),
+            vec![],
+        );
+
+        let mut buf = BitBuffer::new();
+        buf.write(1u8, 1);
+        buf.write(0u8, 7);
+        buf.write(1u8, 1);
+        assert_eq!(
+            buf.to_bytes(),
+            vec![0x80],
+        );
+    }
+}
