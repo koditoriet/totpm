@@ -17,6 +17,7 @@ toml = "0.8.19"
 tss-esapi = "7.5.1"
 
 [dev-dependencies]
+tempfile = "3.12.0"
 testutil = { path = "testutil" }
 
 [profile.release]

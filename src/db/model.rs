@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
 #[derive(Debug)]
+#[derive(Clone)]
+#[derive(PartialEq)]
 pub struct Secret {
     pub id: i64,
     pub service: String,

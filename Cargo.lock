@@ -818,6 +818,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "stderrlog",
+ "tempfile",
  "testutil",
  "toml",
  "tss-esapi",
