@@ -21,6 +21,7 @@ use tss_esapi::{
 
 use crate::presence_verification::{self, PresenceVerifier};
 
+#[derive(Debug)]
 pub struct TPM(Context);
 
 impl TPM {
@@ -42,6 +43,7 @@ impl Drop for TPM {
     }
 }
 
+#[derive(Debug)]
 pub struct HmacKey {
     pub primary_key: KeyHandle,
     pub public: Public,
@@ -55,6 +57,7 @@ impl HmacKey {
 }
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Error {
     TpmError(tss_esapi::Error),
     PresenceVerificationError(presence_verification::Error),
@@ -197,4 +200,132 @@ fn find_next_persistent_handle(ctx: &mut Context) -> tss_esapi::Result<Persisten
         }
     }
     panic!("unable to find a free persistent handle")
+}
+
+#[cfg(test)]
+mod tests {
+    use testutil::SwTpm;
+    use super::*;
+
+    #[test]
+    fn cant_create_tpm_without_presence_verification() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(false));
+        let error = TPM::new(pv, &swtpm.tcti).unwrap_err();
+        assert_eq!(
+            error,
+            Error::PresenceVerificationFailed,
+        );
+    }
+
+    #[test]
+    fn persistent_handle_can_be_loaded() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let key_handle = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        let handle = tpm.get_persistent_primary(key_handle, auth_value).unwrap();
+        assert_ne!(
+            handle.value(),
+            0,
+        );
+    }
+
+    #[test]
+    fn can_create_hmac_keys_with_primary_key() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let key_handle = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        let primary_key = tpm.get_persistent_primary(key_handle, auth_value).unwrap();
+        tpm.create_hmac_key(primary_key, &vec![0,0,0,0,0,0,0,0,0,0]).unwrap();
+        tpm.create_hmac_key(primary_key, &vec![1,0,0,0,0,0,0,0,0,0]).unwrap();
+        tpm.create_hmac_key(primary_key, &vec![2,0,0,0,0,0,0,0,0,0]).unwrap();
+    }
+
+    #[test]
+    fn hmac_key_can_compute_hmac() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let key_handle = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        let primary_key = tpm.get_persistent_primary(key_handle, auth_value).unwrap();
+        let hmac_key = tpm.create_hmac_key(primary_key, &vec![0,0,0,0,0,0,0,0,0,0]).unwrap();
+        let actual_hmac = tpm.hmac(hmac_key, "potato".as_bytes().try_into().unwrap()).unwrap();
+        let expected_hmac = vec![182, 189, 192, 170, 215, 154, 110, 241, 228, 231, 163, 147, 13, 47, 3, 230, 196, 75, 126, 89];
+        assert_eq!(actual_hmac.as_slice(), &expected_hmac)
+    }
+
+    #[test]
+    fn primary_key_with_wrong_auth_value_is_useless() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let wrong_auth_value: Auth = "hella".as_bytes().try_into().unwrap();
+        let key_handle = persistent_to_u32(tpm.create_persistent_primary(auth_value).unwrap());
+        let primary_key = tpm.get_persistent_primary(key_handle, wrong_auth_value).unwrap();
+        let err = tpm.create_hmac_key(primary_key, &vec![0,0,0,0,0,0,0,0,0,0]).unwrap_err();
+        match err {
+            Error::TpmError(tss_esapi::Error::Tss2Error(Tss2ResponseCode::FormatOne(FormatOneResponseCode(code)))) => {
+                assert_eq!(code, 0x98e)
+            },
+            _ => panic!("primary key could be used with wrong auth value")
+        }
+    }
+
+    #[test]
+    fn can_create_multiple_primary_keys() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        tpm.create_persistent_primary(auth_value.clone()).unwrap();
+        tpm.create_persistent_primary(auth_value.clone()).unwrap();
+        tpm.create_persistent_primary(auth_value.clone()).unwrap();
+    }
+
+    #[test]
+    fn can_delete_primary_key() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let key_handle = tpm.create_persistent_primary(auth_value.clone()).unwrap();
+        let handle_u32 = persistent_to_u32(key_handle);
+        tpm.delete_persistent_primary(handle_u32, auth_value.clone()).unwrap();
+        let err = tpm.get_persistent_primary(handle_u32, auth_value).unwrap_err();
+        match err {
+            Error::TpmError(tss_esapi::Error::Tss2Error(Tss2ResponseCode::FormatOne(FormatOneResponseCode(code)))) => {
+                assert_eq!(code, 0x18b)
+            },
+            _ => panic!("primary key could be recovered")
+        }
+    }
+
+    #[test]
+    fn deleting_primary_key_does_not_affect_other_primary_keys() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
+        let mut tpm = TPM::new(pv, &swtpm.tcti).unwrap();
+        let auth_value: Auth = "hello".as_bytes().try_into().unwrap();
+        let key1 = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        let key2 = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        let key3 = persistent_to_u32(tpm.create_persistent_primary(auth_value.clone()).unwrap());
+        tpm.delete_persistent_primary(key2, auth_value.clone()).unwrap();
+        tpm.get_persistent_primary(key1, auth_value.clone()).unwrap();
+        tpm.get_persistent_primary(key2, auth_value.clone()).unwrap_err();
+        tpm.get_persistent_primary(key3, auth_value.clone()).unwrap();
+    }
+
+    fn persistent_to_u32(p: Persistent) -> u32 {
+        match p {
+            tss_esapi::interface_types::dynamic_handles::Persistent::Persistent(persistent_tpm_handle) => {
+                persistent_tpm_handle.into()
+            },
+        }
+    }
 }

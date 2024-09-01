@@ -1,6 +1,7 @@
 pub mod fprintd;
 
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Error {
     ImplementationSpecificError(String)
 }
