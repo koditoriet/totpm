@@ -17,7 +17,7 @@ pub fn run(
 
     log::info!("adding secret for {} @ {}", account, service);
     let secret_bytes = base32::decode(&secret).ok_or(Error::Base32Error)?;
-    let mut store = TotpStore::with_tpm(Box::new(FprintdPresenceVerifier::new()), config)?;
+    let mut store = TotpStore::with_tpm(Box::new(FprintdPresenceVerifier::new(config.pv_timeout)), config)?;
     store.add(service, account, digits, interval, &secret_bytes)?;
     Ok(())
 }

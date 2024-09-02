@@ -17,6 +17,8 @@ toml = "0.8.19"
 tss-esapi = "7.5.1"
 
 [dev-dependencies]
+dbus-crossroads = "0.5.2"
+sequential-test = "0.2.4"
 tempfile = "3.12.0"
 testutil = { path = "testutil" }
 

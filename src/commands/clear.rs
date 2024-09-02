@@ -10,7 +10,7 @@ pub fn run(
         return Ok(())
     }
 
-    TotpStore::clear(Box::new(FprintdPresenceVerifier::new()), config, system)?;
+    TotpStore::clear(Box::new(FprintdPresenceVerifier::new(config.pv_timeout)), config, system)?;
 
     Ok(())
 }

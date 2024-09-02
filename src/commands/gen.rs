@@ -5,7 +5,7 @@ pub fn run(
     service: &str,
     account: Option<&str>
 ) -> Result<()> {
-    let mut store = TotpStore::with_tpm(Box::new(FprintdPresenceVerifier::new()), config)?;
+    let mut store = TotpStore::with_tpm(Box::new(FprintdPresenceVerifier::new(config.pv_timeout)), config)?;
     let alternatives = store.list(Some(service), account)?;
     
     if alternatives.is_empty() {

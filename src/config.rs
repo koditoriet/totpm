@@ -13,6 +13,9 @@ pub struct Config {
 
     // Must be interpreted relative to $HOME if relative.
     pub user_data_path: PathBuf,
+
+    /// Max number of seconds to wait for presence verification.
+    pub pv_timeout: u8,
 }
 
 impl Config {

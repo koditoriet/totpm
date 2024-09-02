@@ -56,7 +56,7 @@ pub fn pick_one<'a, T: Display, I: Iterator<Item = &'a T>, In: BufRead, Out: Wri
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
-    use testutil::{MockStdout, MockTerminal};
+    use testutil::term::{MockStdout, MockTerminal};
 
     use super::*;
 

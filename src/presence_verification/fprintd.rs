@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::{Arc, Mutex}, time::Duration};
+use std::{str::FromStr, sync::{Arc, Mutex}, time::{self, Duration}};
 
 use dbus::{arg::ReadAll, blocking::{Connection, Proxy}, message::SignalArgs, Message, Path};
 
@@ -6,7 +6,10 @@ use crate::privileges::with_uid_as_euid;
 
 use super::PresenceVerifier;
 
-pub struct FprintdPresenceVerifier;
+pub struct FprintdPresenceVerifier {
+    use_system_bus: bool,
+    timeout: Duration,
+}
 
 const FPRINTD_BUS_NAME: &str = "net.reactivated.Fprint";
 const FPRINTD_MANAGER_PATH: &str = "/net/reactivated/Fprint/Manager";
@@ -23,7 +26,7 @@ struct VerifyStatus {
 }
 
 /// All possible fprintd verification statuses.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Status {
     Match,
     NoMatch,
@@ -53,6 +56,21 @@ impl FromStr for Status {
     }
 }
 
+impl ToString for Status {
+    fn to_string(&self) -> String {
+        match self {
+            Status::Match => "verify-match",
+            Status::NoMatch => "verify-no-match",
+            Status::RetryScan => "verify-retry-scan",
+            Status::SwipeTooShort => "verify-swipe-too-short",
+            Status::FingerNotCentered => "verify-finger-not-entered",
+            Status::RemoveAndRetry => "verify-remove-and-retry",
+            Status::Disconnected => "verify-disconnected",
+            Status::UnknownError => "verify-unknown-error",
+        }.to_string()
+    }
+}
+
 impl ReadAll for VerifyStatus {
     fn read(i: &mut dbus::arg::Iter) -> Result<Self, dbus::arg::TypeMismatchError> {
         Ok(VerifyStatus {
@@ -75,7 +93,11 @@ struct FprintDevice<'a> {
 
 impl <'a> Drop for FprintDevice<'a> {
     fn drop(&mut self) {
-        let _: () = self.proxy.method_call(FPRINTD_DEVICE_IFACE, "Release", ()).unwrap();
+        // If release fails, there's not much we can do about it anyway
+        match self.proxy.method_call(FPRINTD_DEVICE_IFACE, "Release", ()) {
+            Ok(()) => (),
+            Err(e) => log::warn!("failed to release fprintd device: {:#?}", e),
+        }
     }
 }
 
@@ -84,7 +106,7 @@ fn fail<T>(reason: &str) -> super::Result<T> {
 }
 
 impl <'a> FprintDevice<'a> {
-    fn verify(&self) -> super::Result<bool> {
+    fn verify(&self, timeout: &Duration) -> super::Result<bool> {
         let scan_status = Arc::new(Mutex::new(None));
         let scan_status_clone = scan_status.clone();
         self.proxy.match_signal(move |status: VerifyStatus, _: &Connection, _: &Message| {
@@ -96,14 +118,22 @@ impl <'a> FprintDevice<'a> {
             .or(fail("fprintd: unable to start fingerprint verification"))?;
 
         eprintln!("place your finger on the fingerprint reader");
-        for _ in 1 .. 5 {
-            self.connection.process(Duration::from_secs(10))
+        let mut time_left = timeout.as_millis() as i64;
+        while time_left > 0 {
+            let t0 = time::Instant::now();
+            self.connection.process(Duration::from_millis(time_left as u64))
                 .or(fail("fprintd: unable to process incoming signals"))?;
+            let t1 = time::Instant::now();
+            time_left -= (t1 - t0).as_millis() as i64;
 
             match *scan_status_clone.lock().unwrap() {
                 Some(status) => {
                     match status {
-                        Status::Match => return Ok(true),
+                        Status::Match => {
+                            self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+                                .or(fail("fprintd: unable to stop fingerprint verification"))?;
+                            return Ok(true)
+                        },
                         Status::NoMatch => {
                             eprintln!("fingerprint not recognized, try again");
                             self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
@@ -119,6 +149,8 @@ impl <'a> FprintDevice<'a> {
                             return fail("fprintd: fingerprint reader disconnected")
                         },
                         Status::UnknownError => {
+                            self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+                                .or(fail("fprintd: unable to stop fingerprint verification"))?;
                             return fail("fprintd: fingerprint scan failed with unknown error")
                         },
                     }
@@ -155,16 +187,177 @@ impl <'a> FprintDevice<'a> {
 impl PresenceVerifier for FprintdPresenceVerifier {
     fn owner_present(&mut self) -> super::Result<bool> {
         with_uid_as_euid(|| {
-            let conn = Connection::new_system()
-                .or(Err(super::Error::ImplementationSpecificError("fprintd: couldn't connect to system bus".to_owned())))?;
+            let conn = if self.use_system_bus {
+                Connection::new_system()
+            } else {
+                Connection::new_session()
+            }.or(Err(super::Error::ImplementationSpecificError("fprintd: couldn't connect to bus".to_owned())))?;
             let dev = FprintDevice::claim_default_device(&conn)?;
-            dev.verify()
+            dev.verify(&self.timeout)
         })
     }
 }
 
 impl FprintdPresenceVerifier {
-    pub fn new() -> Self {
-        FprintdPresenceVerifier
+    pub fn new(timeout_secs: u8) -> Self {
+        FprintdPresenceVerifier { use_system_bus: true, timeout: Duration::from_secs(timeout_secs as u64) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dbus::MethodErr;
+    use sequential_test::sequential;
+    use testutil::fprintd::{FprintdMethod, FprintdMockBuilder, DEVICE_PATH};
+    use crate::presence_verification;
+    use super::*;
+
+    fn new_session_verifier() -> FprintdPresenceVerifier {
+        FprintdPresenceVerifier {
+            use_system_bus: false,
+            timeout: Duration::from_secs(1),
+        }
+    }
+
+    #[test]
+    #[sequential]
+    fn failed_getdefaultdevice_fails_presence_verification() {
+        let _mock = FprintdMockBuilder::<Status>::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Err(MethodErr::no_arg())))
+            .build();
+        let mut pv = new_session_verifier();
+        let error = pv.owner_present().unwrap_err();
+        assert_eq!(error, presence_verification::Error::ImplementationSpecificError("fprintd: couldn't get default device".to_owned()))
+    }
+
+    #[test]
+    #[sequential]
+    fn failed_claim_fails_presence_verification() {
+        let _mock = FprintdMockBuilder::<Status>::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Err(MethodErr::no_arg())))
+            .build();
+        let mut pv = new_session_verifier();
+        let error = pv.owner_present().unwrap_err();
+        assert_eq!(error, presence_verification::Error::ImplementationSpecificError("fprintd: unable to claim device".to_owned()))
+    }
+
+    #[test]
+    #[sequential]
+    fn failed_verifystart_fails_presence_verification() {
+        let _mock = FprintdMockBuilder::<Status>::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Err(MethodErr::no_arg())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        let error = pv.owner_present().unwrap_err();
+        assert_eq!(error, presence_verification::Error::ImplementationSpecificError("fprintd: unable to start fingerprint verification".to_owned()))
+    }
+
+    #[test]
+    #[sequential]
+    fn timeout_makes_presence_verification_succeed_with_result_false() {
+        let _mock = FprintdMockBuilder::<Status>::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(pv.owner_present().unwrap(), false);
+    }
+
+    #[test]
+    #[sequential]
+    fn successful_scan_makes_presence_verification_succeed_with_result_true() {
+        let _mock = FprintdMockBuilder::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::Match, true)
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(pv.owner_present().unwrap(), true);
+    }
+
+    #[test]
+    #[sequential]
+    fn no_match_followed_by_match_makes_presence_verification_succeed() {
+        let _mock = FprintdMockBuilder::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::NoMatch, true)
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::Match, true)
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(pv.owner_present().unwrap(), true);
+    }
+
+    #[test]
+    #[sequential]
+    fn swipe_too_short_followed_by_match_makes_presence_verification_succeed() {
+        let _mock = FprintdMockBuilder::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::SwipeTooShort, false)
+            .wait(Duration::from_millis(100))
+            .send_status(Status::Match, true)
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(pv.owner_present().unwrap(), true);
+    }
+
+    #[test]
+    #[sequential]
+    fn disconnected_makes_presence_verification_fail() {
+        let _mock = FprintdMockBuilder::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::Disconnected, false)
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(
+            pv.owner_present().unwrap_err(),
+            presence_verification::Error::ImplementationSpecificError("fprintd: fingerprint reader disconnected".to_owned())
+        );
+    }
+
+    #[test]
+    #[sequential]
+    fn unknown_error_makes_presence_verification_fail() {
+        let _mock = FprintdMockBuilder::new()
+            .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
+            .expect_method(FprintdMethod::Claim("".to_owned(), Ok(())))
+            .expect_method(FprintdMethod::VerifyStart("any".to_owned(), Ok(())))
+            .wait(Duration::from_millis(100))
+            .send_status(Status::UnknownError, false)
+            .expect_method(FprintdMethod::VerifyStop(Ok(())))
+            .expect_method(FprintdMethod::Release(Ok(())))
+            .build();
+        let mut pv = new_session_verifier();
+        assert_eq!(
+            pv.owner_present().unwrap_err(),
+            presence_verification::Error::ImplementationSpecificError("fprintd: fingerprint scan failed with unknown error".to_owned())
+        );
     }
 }

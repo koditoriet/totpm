@@ -218,7 +218,6 @@ mod tests {
             std::fs::metadata(&db).unwrap().permissions().mode() & 0o777,
             0o600,
         );
-
     }
 
     #[test]

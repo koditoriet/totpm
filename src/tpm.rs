@@ -204,7 +204,7 @@ fn find_next_persistent_handle(ctx: &mut Context) -> tss_esapi::Result<Persisten
 
 #[cfg(test)]
 mod tests {
-    use testutil::SwTpm;
+    use testutil::tpm::SwTpm;
     use super::*;
 
     #[test]

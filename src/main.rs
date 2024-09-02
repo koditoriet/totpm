@@ -99,7 +99,8 @@ fn default_config(local: bool, tpm: String, system_data_path: Option<PathBuf>, u
                 PathBuf::from("/var/lib/totpm")
             }
           ),
-        user_data_path,
+        user_data_path: user_data_path,
+        pv_timeout: 10,
     }
 }
 
