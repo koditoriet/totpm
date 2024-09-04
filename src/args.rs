@@ -78,8 +78,8 @@ pub enum Command {
         /// If the path is not absolute, it is interpreted relative to
         /// each user's home directory.
         /// The directory is created if it does not exist.
-        #[arg(short = 'p', long, default_value = ".local/state/totpm")]
-        user_data_path: PathBuf,
+        #[arg(short = 'p', long)]
+        user_data_path: Option<PathBuf>,
 
         /// User which will own system-wide data files. Will be created if it does not exist.
         #[arg(short, long)]

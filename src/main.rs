@@ -2,7 +2,7 @@ use std::{env, path::{Path, PathBuf}};
 
 use clap::Parser;
 use serde::Deserialize;
-use totpm::{args::Opts, config::Config, result::Result};
+use totpm::{args::Opts, config::{absolute_path, local_path, Config}, result::Result};
 
 fn main() {
     let opts = Opts::parse();
@@ -50,9 +50,10 @@ fn main() {
             let user_name = user.as_deref().unwrap_or("totpm");
             totpm::commands::init::run(
                 &config_path,
-                default_config(local, tpm, system_data_path, user_data_path),
+                Config::default(local, tpm, system_data_path, user_data_path),
                 user_name,
                 local,
+                &PathBuf::from("/usr/local/bin"),
             )
         },
         totpm::args::Command::Clear { yes_i_know_what_i_am_doing, system } => {
@@ -69,39 +70,6 @@ fn main() {
 fn load_config(config_path: PathBuf) -> Result<Config> {
     let config_str = std::fs::read_to_string(config_path)?;
     Ok(Config::deserialize(toml::Deserializer::new(&config_str))?)
-}
-
-/// Makes the given path relative to the user's home directory.
-fn local_path(file: &Path) -> PathBuf {
-    assert!(file.is_relative());
-    #[allow(deprecated)]
-    env::home_dir().unwrap().join(file)
-}
-
-/// Makes the given path absolute without touching the file system.
-/// Does not resolve symlinks or perform other magic.
-fn absolute_path(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_owned()
-    } else {
-        std::env::current_dir().unwrap().join(path)
-    }
-}
-
-/// Returns a new config, with the default system data path if it is not given.
-fn default_config(local: bool, tpm: String, system_data_path: Option<PathBuf>, user_data_path: PathBuf) -> Config {
-    Config {
-        tpm: tpm,
-        system_data_path: system_data_path.as_deref().map(absolute_path).unwrap_or(
-            if local {
-                local_path(&PathBuf::from(".local/state/totpm/system"))
-            } else {
-                PathBuf::from("/var/lib/totpm")
-            }
-          ),
-        user_data_path: user_data_path,
-        pv_timeout: 10,
-    }
 }
 
 /// Returns the path to the totpm configuration file, according to the following rules:
