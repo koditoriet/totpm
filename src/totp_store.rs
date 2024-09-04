@@ -1,4 +1,4 @@
-use std::{fs::Permissions, io::Write, os::unix::fs::PermissionsExt, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::Permissions, io::Write, marker::PhantomData, os::unix::fs::PermissionsExt, time::{SystemTime, UNIX_EPOCH}};
 
 use rand::RngCore;
 use tss_esapi::{handles::KeyHandle, structures::Public, traits::{Marshall, UnMarshall}};
@@ -13,7 +13,6 @@ pub enum Error {
     IOError(std::io::Error),
     DBError(db::Error),
     KeyHandleError,
-    TpmLocked,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -42,51 +41,47 @@ impl From<db::Error> for Error {
     }
 }
 
-// TODO: phantom type for with/without tpm
-pub struct TotpStore {
+pub struct TotpStore<T> {
     config: Config,
     tpm: Option<TPM>,
     primary_key: Option<KeyHandle>,
+    phantom: PhantomData<T>,
 }
 
-impl TotpStore {
+pub struct WithTPM;
+pub struct WithoutTPM;
+
+impl <P> TotpStore<P> {
+    pub fn del(&mut self, secret_id: i64) -> Result<()> {
+        let result = self.with_db(|db| {
+            db.del_secret(secret_id)
+        })?;
+        Ok(result)
+    }
+
+    pub fn list(&mut self, service: Option<&str>, account: Option<&str>) -> Result<Vec<Secret>> {
+        let result = self.with_db(|db| {
+            db.list_secrets(service.unwrap_or(""), account.unwrap_or(""))
+        })?;
+        Ok(result)
+    }
+
+    fn with_db<T, F: FnOnce(&db::DB) -> db::Result<T>>(&mut self, f: F) -> db::Result<T> {
+        Ok(db::with_db(self.config.secrets_db_path(), f)?)
+    }
+}
+
+impl TotpStore<WithoutTPM> {
     /// Creates a TOTP store client which does not access the TPM.
     /// Immediately drops privileges.
-    pub fn without_tpm(config: Config) -> Self {
+    pub fn without_tpm(config: Config) -> TotpStore<WithoutTPM> {
         drop_privileges();
         TotpStore {
             config: config,
             tpm: None,
             primary_key: None,
+            phantom: PhantomData,
         }
-    }
-
-    /// Creates a TOTP store client which uses the TPM.
-    /// Drops privileges immediately after reading the auth value.
-    pub fn with_tpm(
-        presence_verifier: Box<dyn PresenceVerifier>,
-        config: Config,
-    ) -> Result<Self> {
-        log::info!("Creating TOTP store with the following settings:");
-        log::info!("- auth value path: {}", config.auth_value_path().to_str().unwrap());
-        log::info!("- primary key handle path: {}", config.primary_key_handle_path().to_str().unwrap());
-        log::info!("- secrets db path: {}", config.secrets_db_path().to_str().unwrap());
-
-        log::info!("reading auth value");
-        let auth_value = read_auth_value(&config)?;
-
-        log::info!("reading primary key persistent handle");
-        let handle = read_primary_key_persistent_handle(&config)?;
-
-        drop_privileges();
-
-        let mut tpm = TPM::new(presence_verifier, &config.tpm)?;
-        let primary_key = tpm.get_persistent_primary(handle, auth_value.try_into()?)?;
-        Ok(TotpStore {
-            config: config,
-            tpm: Some(tpm),
-            primary_key: Some(primary_key),
-        })
     }
 
     /// Initializes a secret store.
@@ -171,12 +166,43 @@ impl TotpStore {
 
         Ok(())
     }
+}
+
+impl TotpStore<WithTPM> {
+    /// Creates a TOTP store client which uses the TPM.
+    /// Drops privileges immediately after reading the auth value.
+    pub fn with_tpm(
+        presence_verifier: Box<dyn PresenceVerifier>,
+        config: Config,
+    ) -> Result<Self> {
+        log::info!("Creating TOTP store with the following settings:");
+        log::info!("- auth value path: {}", config.auth_value_path().to_str().unwrap());
+        log::info!("- primary key handle path: {}", config.primary_key_handle_path().to_str().unwrap());
+        log::info!("- secrets db path: {}", config.secrets_db_path().to_str().unwrap());
+
+        log::info!("reading auth value");
+        let auth_value = read_auth_value(&config)?;
+
+        log::info!("reading primary key persistent handle");
+        let handle = read_primary_key_persistent_handle(&config)?;
+
+        drop_privileges();
+
+        let mut tpm = TPM::new(presence_verifier, &config.tpm)?;
+        let primary_key = tpm.get_persistent_primary(handle, auth_value.try_into()?)?;
+        Ok(TotpStore {
+            config: config,
+            tpm: Some(tpm),
+            primary_key: Some(primary_key),
+            phantom: PhantomData,
+        })
+    }
 
     pub fn add(&mut self, service: &str, account: &str, digits: u8, interval: u32, secret: &Vec<u8>) -> Result<Secret> {
-        let primary_key = *self.primary_key()?;
+        let primary_key = *self.primary_key();
 
         log::info!("generating secret hmac key");
-        let hmac_key = self.tpm()?.create_hmac_key(primary_key, secret)?;
+        let hmac_key = self.tpm().create_hmac_key(primary_key, secret)?;
         let secret = Secret::new(
             service.to_owned(),
             account.to_owned(),
@@ -199,14 +225,14 @@ impl TotpStore {
 
         log::info!("loading secret hmac key");
         let hmac_key = HmacKey::new(
-            *self.primary_key()?,
+            *self.primary_key(),
             Public::unmarshall(&secret.public_data)?,
             secret.private_data.try_into()?
         );
 
         log::info!("generating one time code");
         let ts = timestamp.duration_since(UNIX_EPOCH).unwrap().as_secs() / secret.interval as u64;
-        let hash = self.tpm()?.hmac(hmac_key, ts.to_be_bytes().to_vec().try_into()?)?;
+        let hash = self.tpm().hmac(hmac_key, ts.to_be_bytes().to_vec().try_into()?)?;
 
         let offset = usize::from(hash[hash.len() - 1]) & 0xf;
         let mut code: u64 = (hash[offset] as u64 & 0x7f) * 0x1000000;
@@ -217,35 +243,17 @@ impl TotpStore {
         Ok(format!("{:0>w$}", code, w = secret.digits as usize))
     }
 
-    pub fn del(&mut self, secret_id: i64) -> Result<()> {
-        let result = self.with_db(|db| {
-            db.del_secret(secret_id)
-        })?;
-        Ok(result)
-    }
-
-    pub fn list(&mut self, service: Option<&str>, account: Option<&str>) -> Result<Vec<Secret>> {
-        let result = self.with_db(|db| {
-            db.list_secrets(service.unwrap_or(""), account.unwrap_or(""))
-        })?;
-        Ok(result)
-    }
-
-    fn with_db<T, F: FnOnce(&db::DB) -> db::Result<T>>(&mut self, f: F) -> db::Result<T> {
-        Ok(db::with_db(self.config.secrets_db_path(), f)?)
-    }
-
-    fn tpm(&mut self) -> Result<&mut TPM> {
+    fn tpm(&mut self) -> &mut TPM {
         match &mut self.tpm {
-            Some(tpm) => Ok(tpm),
-            None => Err(Error::TpmLocked),
+            Some(tpm) => tpm,
+            None => unreachable!(),
         }
     }
 
-    fn primary_key(&self) -> Result<&KeyHandle> {
+    fn primary_key(&self) -> &KeyHandle {
         match &self.primary_key {
-            Some(primary_key) => Ok(primary_key),
-            None => Err(Error::TpmLocked),
+            Some(primary_key) => primary_key,
+            None => unreachable!(),
         }
     }
 }

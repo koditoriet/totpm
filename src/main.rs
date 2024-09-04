@@ -1,4 +1,4 @@
-use std::{env, path::{Path, PathBuf}};
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
