@@ -76,3 +76,34 @@ pub fn absolute_path(path: &Path) -> PathBuf {
         std::env::current_dir().unwrap().join(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_default_config_uses_local_defaults() {
+        #[allow(deprecated)]
+        let home_dir = env::home_dir().unwrap();
+
+        let cfg = Config::default(true, "device".to_string(), None, None);
+        assert!(cfg.system_data_path.starts_with(&home_dir));
+        assert!(cfg.user_data_path.is_relative());
+        assert!(cfg.auth_value_path().starts_with(&home_dir));
+        assert!(cfg.primary_key_handle_path().starts_with(&home_dir));
+        assert!(cfg.secrets_db_path().starts_with(&home_dir));
+    }
+
+    #[test]
+    fn global_default_config_uses_global_defaults() {
+        #[allow(deprecated)]
+        let home_dir = env::home_dir().unwrap();
+
+        let cfg = Config::default(false, "device".to_string(), None, None);
+        assert!(cfg.system_data_path.starts_with("/var/lib"));
+        assert!(cfg.user_data_path.is_relative());
+        assert!(cfg.auth_value_path().starts_with("/var/lib"));
+        assert!(cfg.primary_key_handle_path().starts_with("/var/lib"));
+        assert!(cfg.secrets_db_path().starts_with(&home_dir));
+    }
+}
