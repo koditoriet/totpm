@@ -1,4 +1,4 @@
-use std::process::{Child, Command};
+use std::{process::{Child, Command}, thread, time::Duration};
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -28,6 +28,8 @@ impl SwTpm {
             .arg("--flags").arg("not-need-init")
             .spawn()
             .unwrap();
+        // give swtpm time to start
+        thread::sleep(Duration::from_millis(200));
         SwTpm {
             process: child,
             dir: tpm_dir,

@@ -1,4 +1,7 @@
-use std::{fs::{self, Permissions}, os::unix::fs::{MetadataExt, PermissionsExt}, path::{Path, PathBuf}, process::{exit, Command}};
+#[cfg(feature = "install")]
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+
+use std::{fs::{self}, os::unix::fs::MetadataExt, path::{Path, PathBuf}, process::Command};
 use log::warn;
 use crate::{config::Config, presence_verification::ConstPresenceVerifier, privileges::is_root, result::{Error, Result}, totp_store::TotpStore};
 
@@ -13,7 +16,7 @@ pub fn run(
 ) -> Result<()> {
     if needs_root(cfg_path, &config, user, local, &exe_install_dir.join(EXE_NAME)) && !is_root() {
         eprintln!("must be root to initialize non-local TOTP store");
-        exit(1)
+        return Err(Error::PermissionError);
     }
 
     if local {
@@ -44,43 +47,51 @@ pub fn run(
     )?;
 
     if !local {
-        log::info!("creating user '{}'", user);
-        let useradd_result = Command::new("/usr/sbin/useradd")
-            .arg("-r")
-            .arg(user)
-            .arg("-s")
-            .arg("/usr/sbin/nologin")
-            .output();
-        match useradd_result {
-            Ok(_) => {},
-            Err(e) => { log::warn!("unable to create user '{}': {:#?}", user, e) },
-        }
-        let uid = get_user_id(user)?;
-
+        let uid = install(user, exe_install_dir)?;
         log::info!("chowning system data directory to user {} (uid {})", user, uid);
         std::os::unix::fs::chown(&system_data_path, Some(uid), None)?;
-
-        let executable_path = std::env::current_exe()?;
-        let moved_executable_path = exe_install_dir.join(EXE_NAME);
-
-        log::info!(
-            "installing executable {} as {} with permissions 4755",
-            executable_path.to_str().unwrap(),
-            moved_executable_path.to_str().unwrap(),
-        );
-        std::fs::copy(&executable_path,&moved_executable_path)?;
-        std::os::unix::fs::chown(&moved_executable_path, Some(uid), None)?;
-        std::fs::set_permissions(&moved_executable_path, Permissions::from_mode(0o4755))?;
-    }
-
-    if !local {
         log::info!("chowning auth value file to {}", user);
-        let uid = get_user_id(user)?;
         std::os::unix::fs::chown(auth_value_path, Some(uid), None)?;
     }
 
     Ok(())
 }
+
+#[cfg(feature = "install")]
+fn install(user: &str, exe_install_dir: &Path) -> Result<u32> {
+    log::info!("creating user '{}'", user);
+    let useradd_result = Command::new("/usr/sbin/useradd")
+        .arg("-r")
+        .arg(user)
+        .arg("-s")
+        .arg("/usr/sbin/nologin")
+        .output();
+    let uid = get_user_id(user)?;
+
+    match useradd_result {
+        Ok(_) => {},
+        Err(e) => { log::warn!("unable to create user '{}': {:#?}", user, e) },
+    }
+
+    let executable_path = std::env::current_exe()?;
+    let moved_executable_path = exe_install_dir.join(EXE_NAME);
+
+    log::info!(
+        "installing executable {} as {} with permissions 4755",
+        executable_path.to_str().unwrap(),
+        moved_executable_path.to_str().unwrap(),
+    );
+    std::fs::copy(&executable_path,&moved_executable_path)?;
+    std::os::unix::fs::chown(&moved_executable_path, Some(uid), None)?;
+    std::fs::set_permissions(&moved_executable_path, Permissions::from_mode(0o4755))?;
+    Ok(uid)
+}
+
+#[cfg(not(feature = "install"))]
+fn install(user: &str, _exe_install_dir: &Path) -> Result<u32> {
+    get_user_id(user)
+}
+
 
 fn needs_root(cfg_path: &Path, config: &Config, user: &str, local: bool, exe_install_path: &Path) -> bool {
     if local {
@@ -91,7 +102,7 @@ fn needs_root(cfg_path: &Path, config: &Config, user: &str, local: bool, exe_ins
     if user != current_user {
         return true;
     }
-    if !can_create_file(current_user_id, exe_install_path) {
+    if cfg!(feature = "install") && !can_create_file(current_user_id, exe_install_path) {
         return true;
     }
     if !can_create_file(current_user_id, cfg_path) {
@@ -158,7 +169,9 @@ fn get_user_name() -> String {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::{tempdir, TempDir};
     use testutil::tpm::SwTpm;
 
     use super::*;
@@ -176,9 +189,7 @@ mod tests {
         );
         run(&cfg_path, config.clone(), &get_user_name(), false, dir.path()).unwrap();
 
-        let installed_exe_path = dir.path().join(EXE_NAME);
-        assert!(installed_exe_path.is_file());
-        assert_eq!(installed_exe_path.metadata().unwrap().permissions().mode(), 0o104755);
+        check_installed_exe(&dir);
 
         assert!(config.auth_value_path().is_file());
         assert_eq!(config.auth_value_path().metadata().unwrap().permissions().mode(), 0o100600);
@@ -188,6 +199,48 @@ mod tests {
 
         // init should NOT create the secrets database
         assert_eq!(config.secrets_db_path().exists(), false);
+    }
+
+    #[test]
+    #[cfg(not(feature = "install"))]
+    fn not_being_able_to_install_exe_is_fine_if_install_feature_is_disabled() {
+        let swtpm = SwTpm::new();
+        let dir = tempdir().unwrap();
+        let cfg_path = dir.path().join("totpm.conf");
+        let config = Config::default(
+            true,
+            swtpm.tcti.clone(),
+            Some(dir.path().join("system")),
+            Some(dir.path().join("user"))
+        );
+        run(&cfg_path, config.clone(), &get_user_name(), false, &PathBuf::from("/")).unwrap();
+
+        assert!(config.auth_value_path().is_file());
+        assert_eq!(config.auth_value_path().metadata().unwrap().permissions().mode(), 0o100600);
+
+        assert!(config.primary_key_handle_path().is_file());
+        assert_eq!(config.primary_key_handle_path().metadata().unwrap().permissions().mode(), 0o100644);
+
+        // init should NOT create the secrets database
+        assert_eq!(config.secrets_db_path().exists(), false);
+    }
+
+    #[test]
+    #[cfg(feature = "install")]
+    fn not_being_able_to_install_exe_is_an_error_if_install_feature_is_enabled() {
+        let swtpm = SwTpm::new();
+        let dir = tempdir().unwrap();
+        let cfg_path = dir.path().join("totpm.conf");
+        let config = Config::default(
+            true,
+            swtpm.tcti.clone(),
+            Some(dir.path().join("system")),
+            Some(dir.path().join("user"))
+        );
+        match run(&cfg_path, config, &get_user_name(), false, &PathBuf::from("/")).unwrap_err() {
+            Error::PermissionError => {},
+            err => panic!("wrong error: {:#?}", err),
+        }
     }
 
     #[test]
@@ -215,4 +268,14 @@ mod tests {
         // init should NOT create the secrets database
         assert_eq!(config.secrets_db_path().exists(), false);
     }
+
+    #[cfg(feature = "install")]
+    fn check_installed_exe(dir: &TempDir) {
+        let installed_exe_path = dir.path().join(EXE_NAME);
+        assert!(installed_exe_path.is_file());
+        assert_eq!(installed_exe_path.metadata().unwrap().permissions().mode(), 0o104755);
+    }
+
+    #[cfg(not(feature = "install"))]
+    fn check_installed_exe(_dir: &TempDir) {}
 }

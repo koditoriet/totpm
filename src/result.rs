@@ -9,6 +9,7 @@ pub enum Error {
     UserNotFoundError,
     HomeDirNotFound,
     Base32Error,
+    PermissionError,
 }
 
 impl From<toml::ser::Error> for Error {
