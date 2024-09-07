@@ -140,7 +140,7 @@ impl TPM {
         })
     }
 
-    pub fn create_hmac_key(&mut self, primary_key: KeyHandle, key_material: &Vec<u8>) -> Result<HmacKey> {
+    pub fn create_hmac_key(&mut self, primary_key: KeyHandle, key_material: &[u8]) -> Result<HmacKey> {
         let hmac_key = self.0.execute_with_nullauth_session(|ctx| {
             ctx.create(
                 primary_key,
@@ -161,7 +161,7 @@ impl TPM {
                     unique: Digest::default(),
                 },
                 None,
-                Some(key_material.clone().try_into()?),
+                Some(key_material.try_into()?),
                 None,
                 None
             )

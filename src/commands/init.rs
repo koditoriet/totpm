@@ -36,8 +36,12 @@ pub fn run(
         "creating system data directory with permissions 0700 at {}",
         config.system_data_path.to_str().unwrap(),
     );
-    fs::create_dir_all(&config.system_data_path)?;
-    std::fs::set_permissions(&config.system_data_path, Permissions::from_mode(0o700))?;
+    let system_data_path = config.system_data_path.clone();
+    let auth_value_path = config.auth_value_path();
+    TotpStore::init(
+        Box::new(ConstPresenceVerifier::new(true)),
+        config,
+    )?;
 
     if !local {
         log::info!("creating user '{}'", user);
@@ -54,7 +58,7 @@ pub fn run(
         let uid = get_user_id(user)?;
 
         log::info!("chowning system data directory to user {} (uid {})", user, uid);
-        std::os::unix::fs::chown(&config.system_data_path, Some(uid), None)?;
+        std::os::unix::fs::chown(&system_data_path, Some(uid), None)?;
 
         let executable_path = std::env::current_exe()?;
         let moved_executable_path = exe_install_dir.join(EXE_NAME);
@@ -68,12 +72,6 @@ pub fn run(
         std::os::unix::fs::chown(&moved_executable_path, Some(uid), None)?;
         std::fs::set_permissions(&moved_executable_path, Permissions::from_mode(0o4755))?;
     }
-
-    let auth_value_path = config.auth_value_path();
-    TotpStore::init(
-        Box::new(ConstPresenceVerifier::new(true)),
-        config,
-    )?;
 
     if !local {
         log::info!("chowning auth value file to {}", user);
