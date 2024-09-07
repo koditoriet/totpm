@@ -219,6 +219,19 @@ mod tests {
     }
 
     #[test]
+    fn creating_tpm_errors_if_presence_verification_errors() {
+        let swtpm = SwTpm::new();
+        let pv = Box::new(FailingPresenceVerifier);
+        let error = TPM::new(pv, &swtpm.tcti).unwrap_err();
+        assert_eq!(
+            error,
+            Error::PresenceVerificationError(
+                presence_verification::Error::ImplementationSpecificError("FailingPresenceVerifier".to_string())
+            ),
+        );
+    }
+
+    #[test]
     fn persistent_handle_can_be_loaded() {
         let swtpm = SwTpm::new();
         let pv = Box::new(presence_verification::ConstPresenceVerifier::new(true));
@@ -328,4 +341,13 @@ mod tests {
             },
         }
     }
+
+    struct FailingPresenceVerifier;
+
+    impl PresenceVerifier for FailingPresenceVerifier {
+        fn owner_present(&mut self) -> std::result::Result<bool, presence_verification::Error> {
+            Err(presence_verification::Error::ImplementationSpecificError("FailingPresenceVerifier".to_string()))
+        }
+    }
+
 }
