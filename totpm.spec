@@ -6,7 +6,7 @@
 
 Name:           totpm
 Version:        0.1.0
-Release:        %autorelease
+Release:        1%{?dist}
 Summary:        # FIXME
 
 SourceLicense:  MIT
@@ -56,7 +56,7 @@ mkdir -p %{buildroot}/var/lib/totpm
 %attr(0644, root, root) /etc/totpm.conf
 %attr(0644, root, root) %license LICENSE
 %attr(0644, root, root) %license LICENSE.dependencies
-%attr(4775, totpm, totpm) %{_bindir}/totpm
+%attr(4755, totpm, totpm) %{_bindir}/totpm
 %attr(0700, totpm, totpm) /var/lib/totpm
 
 %changelog

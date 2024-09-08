@@ -46,3 +46,9 @@ pub fn is_root() -> bool {
         getuid() == 0
     }
 }
+
+pub fn is_effective_user(uid: u32) -> bool {
+    unsafe {
+        geteuid() == uid
+    }
+}

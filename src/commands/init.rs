@@ -6,7 +6,7 @@ use log::warn;
 use crate::{
     config::Config,
     presence_verification::PresenceVerificationMethod,
-    privileges::{is_root, with_uid_as_euid},
+    privileges::{is_effective_user, is_root, with_uid_as_euid},
     result::{Error, Result},
     totp_store::TotpStore
 };
@@ -33,20 +33,13 @@ pub fn run(
         )
     }
 
-    let system_data_path = config.system_data_path.clone();
-    let auth_value_path = config.auth_value_path();
-
     log::info!("initializing secret store");
     config.pv_method = PresenceVerificationMethod::None;
     TotpStore::init(config.clone())?;
 
     if !local {
         with_uid_as_euid(||{
-            let uid = install(&config, cfg_path, user, exe_install_dir)?;
-            log::info!("chowning system data directory to user {} (uid {})", user, uid);
-            std::os::unix::fs::chown(&system_data_path, Some(uid), None)?;
-            log::info!("chowning auth value file to {}", user);
-            std::os::unix::fs::chown(auth_value_path, Some(uid), None)?;
+            install(&config, cfg_path, user, exe_install_dir)?;
             Ok::<(), Error>(())
         })?;
     }
@@ -95,23 +88,31 @@ fn install(_config: &Config, _cfg_path: &Path, user: &str, _exe_install_dir: &Pa
     get_user_id(user)
 }
 
-
 fn needs_root(cfg_path: &Path, config: &Config, user: &str, local: bool, exe_install_path: &Path) -> bool {
     if local {
+        log::info!("does not need root because we're doing local init");
         return false;
     }
-    let current_user = get_user_name();
-    let current_user_id = get_user_id(&current_user).unwrap();
-    if user != current_user {
+    let totpm_user_id = get_user_id(&user).unwrap();
+    if !is_effective_user(totpm_user_id) {
+        log::info!("needs root because we're not the totpm user");
         return true;
     }
-    if cfg!(feature = "install") && !can_create_file(current_user_id, exe_install_path) {
+    if cfg!(feature = "install") && !can_create_file(totpm_user_id, exe_install_path) {
+        log::info!(
+            "needs root because install is enabled and we can't install executable to {}",
+            exe_install_path.to_str().unwrap()
+        );
         return true;
     }
-    if !can_create_file(current_user_id, cfg_path) {
+    if cfg!(feature = "install") && !can_create_file(totpm_user_id, cfg_path) {
+        log::info!(
+            "needs root because install is enabled and we can't install config to {}",
+            cfg_path.to_str().unwrap()
+        );
         return true;
     }
-    if !can_create_dir(current_user_id, &config.system_data_path) {
+    if !can_create_dir(totpm_user_id, &config.system_data_path) {
         return true;
     }
     false
@@ -164,10 +165,6 @@ fn get_user_id(user: &str) -> Result<u32> {
         .or(Err(Error::UserNotFoundError))?
         .trim()
         .parse::<u32>().or(Err(Error::UserNotFoundError))
-}
-
-fn get_user_name() -> String {
-    std::env::var("USER").unwrap_or("root".to_string())
 }
 
 #[cfg(test)]
@@ -298,5 +295,9 @@ mod tests {
     #[cfg(not(feature = "install"))]
     fn check_installed_config(cfg_path: &Path) {
         assert!(!cfg_path.exists());
+    }
+
+    fn get_user_name() -> String {
+        std::env::var("USER").unwrap_or("root".to_string())
     }
 }

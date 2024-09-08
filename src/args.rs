@@ -37,6 +37,11 @@ pub enum Command {
         /// How often to generate a new security code.
         #[arg(short, long, default_value = "30")]
         interval: u32,
+
+        /// Read secret from standard input instead of directly from tty.
+        /// Only use this for non-interactive use cases, to avoid echoing secret to screen.
+        #[arg(long, default_value = "false")]
+        secret_on_stdin: bool,
     },
 
     /// Delete an existing TOTP secret.
