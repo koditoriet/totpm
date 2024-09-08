@@ -1,3 +1,5 @@
+[![Copr build status](https://copr.fedorainfracloud.org/coprs/koditoriet/totpm/package/totpm/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/koditoriet/totpm/package/totpm/)
+
 # totpm: A TPM-backed command line TOTP client
 `totpm` is a command line TOTP client which uses your computer's TPM to store secrets securely.
 It uses fingerprint verification via fprintd to ensure that only a user that is physically present at the computer
@@ -7,14 +9,19 @@ can generate one-time codes.
 ## Installation
 At the time of writing, `totpm` only supports TPM2.0-capable x86-64 Linux systems.
 
-`totpm` is pre-release software, and may be a bit annoying to install before the first official version.
-
 
 ### Fedora
-1. Clone the repository.
-2. Run `make FEDORA_RELEASE=<version> fedora-package` to build an RPM.
-   Replace `<version>` with whichever Fedora release you are running. `totpm` has been tested on Fedora 40, 41 and 42.
-3. Install the resulting package with `dnf`.
+Enable the `totpm` Copr, install `totpm` and initialize the secrets database:
+```shell
+sudo dnf copr enable koditoriet/totpm
+sudo dnf install totpm
+topm init
+```
+
+If you're getting permission errors, you need to add your user to the `tss` group and re-login:
+```shell
+sudo usermod -a -G tss "$USER"
+```
 
 
 ### Other Linux (system install)
