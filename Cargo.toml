@@ -19,7 +19,7 @@ serde = "1.0.205"
 serde_derive = "1.0.205"
 stderrlog = "0.6.0"
 toml = "0.8.19"
-tss-esapi = "7.5.1"
+tss-esapi = "7.4.0"
 
 [dev-dependencies]
 serial_test = "3.1.1"
