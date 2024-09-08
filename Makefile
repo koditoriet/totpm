@@ -20,7 +20,7 @@ totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm: totpm-$(VERSION).tar.gz
 
 totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm
 	fedpkg --release f$(FEDORA_RELEASE) mockbuild
-	cp -a results_totpm/$(VERSION)/1.fc$(FEDORA_RELEASE)/totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm
+	cp -a results_totpm/$(VERSION)/1.fc$(FEDORA_RELEASE)/totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm ./
 
 .PHONY: test
 test:
