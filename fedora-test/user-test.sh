@@ -7,7 +7,7 @@ totpm init
 
 # base32("hellohello")
 echo "NBSWY3DPNBSWY3DP" | totpm add --secret-on-stdin foo bar
-[ "$(totpm list)" == "bar @ foo" ]
+[ "$(totpm list)" == "foo (bar)" ]
 [ "$(totpm gen foo bar)" != "" ]
 
 totpm del foo bar
