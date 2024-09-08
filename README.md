@@ -4,6 +4,31 @@ It uses fingerprint verification via fprintd to ensure that only a user that is 
 can generate one-time codes.
 
 
+## Installation
+At the time of writing, `totpm` only supports TPM2.0-capable x86-64 Linux systems.
+
+`totpm` is pre-release software, and may be a bit annoying to install before the first official version.
+
+
+### Fedora
+1. Clone the repository.
+2. Run `make FEDORA_RELEASE=<version> fedora-package` to build an RPM.
+   Replace `<version>` with whichever Fedora release you are running. `totpm` has been tested on Fedora 40, 41 and 42.
+3. Install the resulting package with `dnf`.
+
+
+### Other Linux (system install)
+1. Clone the repository.
+2. Run `cargo build --release --features=install` to build the `totpm` binary.
+3. Run `./target/release/totpm init` to install `totpm` for all users on the system.
+
+
+### Other Linux (local install)
+1. Clone the repository.
+2. Run `cargo install --release` to build and install the `totpm` binary.
+3. Run `totpm init --local` to set up `totpm` for the current user.
+
+
 ## Implementation details
 `totpm` can be used either in system mode or in local mode. System mode highly recommended as it is more secure
 against local attackars. Local mode is only recommended in cases where the user is not able to install

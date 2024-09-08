@@ -21,6 +21,9 @@ totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm: totpm-$(VERSION)-1.fc$(FEDOR
 	fedpkg --release f$(FEDORA_RELEASE) mockbuild
 	cp -a results_totpm/$(VERSION)/1.fc$(FEDORA_RELEASE)/totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm ./
 
+.PHONY: fedora-package
+fedora-package: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm
+
 .PHONY: test
 test:
 	cargo test --features=dbus-tests,install
