@@ -32,7 +32,9 @@ fn fail(e: totpm::result::Error) {
         totpm::result::Error::ConfigWriteError(e) => {
             eprintln!("unable to write default configuration to file: {:#?}", e);
         },
-        totpm::result::Error::TotpStoreError(_) => todo!(),
+        totpm::result::Error::TotpStoreError(e) => {
+            print_totp_store_error(e);
+        },
         totpm::result::Error::UserNotFoundError(user) => {
             eprintln!("user does not exist: {}", user);
         },
@@ -47,6 +49,34 @@ fn fail(e: totpm::result::Error) {
         },
     };
     exit(1);
+}
+
+fn print_totp_store_error(error: totpm::totp_store::Error) {
+    match error {
+        totpm::totp_store::Error::NotInitialized => {
+            eprintln!("the totp store is not initialized");
+            eprintln!("initialize it by running 'totpm init' and then re-run the command");
+        },
+        totpm::totp_store::Error::AlreadyInitialized => {
+            eprintln!("the totp store is already initialized");
+        },
+        totpm::totp_store::Error::TpmError(e) => {
+            eprintln!("a tpm operation failed: {:#?}", e);
+            eprintln!("try re-running the command with the --debug flag for more information");
+        },
+        totpm::totp_store::Error::IOError(e) => {
+            eprintln!("an io operation failed: {:#?}", e);
+            eprintln!("try re-running the command with the --debug flag for more information");
+        },
+        totpm::totp_store::Error::DBError(e) => {
+            eprintln!("an sqlite operation failed: {:#?}", e);
+            eprintln!("try re-running the command with the --debug flag for more information");
+        },
+        totpm::totp_store::Error::KeyHandleError => {
+            eprintln!("the primary key handle is corrupted and your secrets are permanently lost");
+            eprintln!("you can reset the password store by running 'totpm clear' followed by 'totpm init'");
+        },
+    }
 }
 
 fn run_command(opts: Opts, config_path: &Path) -> Result<()> {
