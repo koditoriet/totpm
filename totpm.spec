@@ -45,7 +45,6 @@ mkdir -p %{buildroot}/var/lib/totpm
 
 %pre
 %sysusers_create_compat %{SOURCE1}
-usermod -a -G tss totpm
 
 %if %{with check}
 %check
