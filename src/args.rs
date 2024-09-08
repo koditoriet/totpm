@@ -71,7 +71,7 @@ pub enum Command {
     Init {
         /// TPM configuration to use.
         /// May be either "device", "device:/path/to/tpm", or "swtpm:host=...,port=..."
-        #[arg(short, long, default_value = "device")]
+        #[arg(short, long, default_value = "device:/dev/tpmrm0")]
         tpm: String,
 
         /// Path to directory where totpm should store system-wide data.
