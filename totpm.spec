@@ -7,7 +7,7 @@
 Name:           totpm
 Version:        0.1.0
 Release:        1%{?dist}
-Summary:        # FIXME
+Summary:        A TPM-backed command line TOTP client. Like Google Authenticator in your terminal.
 
 SourceLicense:  MIT
 License:        MIT
@@ -53,11 +53,11 @@ mkdir -p %{buildroot}/var/lib/totpm
 
 %files
 %attr(0644, root, root) %{_sysusersdir}/totpm.conf
-%attr(0644, root, root) /etc/totpm.conf
+%config %attr(0644, root, root) /etc/totpm.conf
 %attr(0644, root, root) %license LICENSE
 %attr(0644, root, root) %license LICENSE.dependencies
 %attr(4755, totpm, totpm) %{_bindir}/totpm
-%attr(0700, totpm, totpm) /var/lib/totpm
+%dir %attr(0700, totpm, totpm) /var/lib/totpm
 
 %changelog
 %autochangelog
