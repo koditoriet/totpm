@@ -197,10 +197,11 @@ impl TotpStore<WithTPM> {
         log::info!("reading primary key persistent handle");
         let handle = read_primary_key_persistent_handle(&config).or(Err(Error::NotInitialized))?;
 
-        drop_privileges();
-
         let mut tpm = TPM::new(pv, &config.tpm)?;
         let primary_key = tpm.get_persistent_primary(handle, auth_value.try_into()?)?;
+
+        drop_privileges();
+
         Ok(TotpStore {
             config: config,
             tpm: Some(tpm),
