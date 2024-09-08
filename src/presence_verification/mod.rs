@@ -21,7 +21,7 @@ pub enum PresenceVerificationMethod {
 impl PresenceVerificationMethod {
     pub fn from_str(s: &str) -> crate::result::Result<Self> {
         Self::deserialize(s.into_deserializer())
-            .map_err(|_: serde::de::value::Error| crate::result::Error::InvalidPVMethod)
+            .map_err(|_: serde::de::value::Error| crate::result::Error::InvalidPVMethod(s.to_string()))
     }
 }
 
@@ -55,7 +55,7 @@ mod tests {
         for v in invalid_values {
             match PresenceVerificationMethod::from_str(v) {
                 Ok(x) => panic!("'{}' deserialized to '{:#?}'", v, x),
-                Err(crate::result::Error::InvalidPVMethod) => {},
+                Err(crate::result::Error::InvalidPVMethod(_)) => {},
                 Err(e) => panic!("wrong error: {:#?}", e),
             }
         }

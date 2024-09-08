@@ -21,8 +21,7 @@ pub fn run(
     exe_install_dir: &Path,
 ) -> Result<()> {
     if needs_root(cfg_path, &config, user, local, &exe_install_dir.join(EXE_NAME)) && !is_root() {
-        eprintln!("must be root to initialize non-local TOTP store");
-        return Err(Error::PermissionError);
+        return Err(Error::RootRequired);
     }
 
     if local {
@@ -162,9 +161,10 @@ fn get_user_id(user: &str) -> Result<u32> {
         .output()?
         .stdout;
     String::from_utf8(uid_bytes)
-        .or(Err(Error::UserNotFoundError))?
+        .or(Err(Error::UserNotFoundError(user.to_string())))?
         .trim()
-        .parse::<u32>().or(Err(Error::UserNotFoundError))
+        .parse::<u32>()
+        .or(Err(Error::UserNotFoundError(user.to_string())))
 }
 
 #[cfg(test)]
@@ -242,7 +242,7 @@ mod tests {
             None,
         );
         match run(&cfg_path, config, &get_user_name(), false, &PathBuf::from("/")).unwrap_err() {
-            Error::PermissionError => {},
+            Error::RootRequired => {},
             err => panic!("wrong error: {:#?}", err),
         }
     }

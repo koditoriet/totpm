@@ -23,7 +23,7 @@ pub fn run(
     };
 
     log::info!("adding secret for {} @ {}", account, service);
-    let secret_bytes = base32::decode(&secret).ok_or(Error::Base32Error)?;
+    let secret_bytes = base32::decode(&secret).ok_or(Error::SecretFormatError)?;
     let mut store = TotpStore::with_tpm(config)?;
     store.add(service, account, digits, interval, &secret_bytes)?;
     Ok(())

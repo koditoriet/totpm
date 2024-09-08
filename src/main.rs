@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, process::exit};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -14,7 +14,39 @@ fn main() {
     }
 
     let config_path = resolve_config_path(false, opts.config.as_deref());
-    run_command(opts, &config_path).unwrap();
+    match run_command(opts, &config_path) {
+        Ok(_) => (),
+        Err(e) => fail(e),
+    }
+}
+
+fn fail(e: totpm::result::Error) {
+    match e {
+        totpm::result::Error::IOError(e) => {
+            eprintln!("an io operation failed: {:#?}", e);
+            eprintln!("try re-running the command with the --debug flag for more information");
+        },
+        totpm::result::Error::ConfigReadError(e) => {
+            eprintln!("unable to parse configuration file: {:#?}", e);
+        },
+        totpm::result::Error::ConfigWriteError(e) => {
+            eprintln!("unable to write default configuration to file: {:#?}", e);
+        },
+        totpm::result::Error::TotpStoreError(_) => todo!(),
+        totpm::result::Error::UserNotFoundError(user) => {
+            eprintln!("user does not exist: {}", user);
+        },
+        totpm::result::Error::SecretFormatError => {
+            eprintln!("unable to decode secret");
+        },
+        totpm::result::Error::InvalidPVMethod(method) => {
+            eprintln!("invalid presence verification method: {}", method);
+        },
+        totpm::result::Error::RootRequired => {
+            eprintln!("root permissions required");
+        },
+    };
+    exit(1);
 }
 
 fn run_command(opts: Opts, config_path: &Path) -> Result<()> {
