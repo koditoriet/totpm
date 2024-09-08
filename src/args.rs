@@ -84,11 +84,17 @@ pub enum Command {
         /// User which will own system-wide data files. Will be created if it does not exist.
         #[arg(short, long)]
         user: Option<String>,
+
+        /// Method to use for presence verification.
+        /// Valid values are `fprintd` and `none`.
+        /// Defaults to `fprintd` for system install, `none` for local install.
+        #[arg(short, long)]
+        presence_verification: Option<String>,
     
         /// Allow user-local installation. A local installation will:
-        /// - not create a user
+        /// - not create a user or install any executables into system paths
         /// - create any files and directories as the current user
-        /// - use user-local defaults for paths that are not explicitly specified
+        /// - use user-local defaults for arguments that are not explicitly specified
         #[arg(short, long, default_value = "false")]
         local: bool,
     },

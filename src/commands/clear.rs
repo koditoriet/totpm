@@ -1,4 +1,4 @@
-use crate::{config::Config, presence_verification::fprintd::FprintdPresenceVerifier, result::Result, totp_store::TotpStore};
+use crate::{config::Config, result::Result, totp_store::TotpStore};
 
 pub fn run(
     config: Config,
@@ -9,8 +9,5 @@ pub fn run(
         eprintln!("verification flag not specified; aborting");
         return Ok(())
     }
-
-    TotpStore::clear(Box::new(FprintdPresenceVerifier::new(config.pv_timeout)), config, system)?;
-
-    Ok(())
+    Ok(TotpStore::clear(config, system)?)
 }

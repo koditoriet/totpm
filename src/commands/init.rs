@@ -3,13 +3,19 @@ use std::{fs, fs::Permissions, os::unix::fs::PermissionsExt};
 
 use std::{os::unix::fs::MetadataExt, path::{Path, PathBuf}, process::Command};
 use log::warn;
-use crate::{config::Config, presence_verification::ConstPresenceVerifier, privileges::{is_root, with_uid_as_euid}, result::{Error, Result}, totp_store::TotpStore};
+use crate::{
+    config::Config,
+    presence_verification::PresenceVerificationMethod,
+    privileges::{is_root, with_uid_as_euid},
+    result::{Error, Result},
+    totp_store::TotpStore
+};
 
 const EXE_NAME: &str = "totpm";
 
 pub fn run(
     cfg_path: &Path,
-    config: Config,
+    mut config: Config,
     user: &str,
     local: bool,
     exe_install_dir: &Path,
@@ -27,17 +33,12 @@ pub fn run(
         )
     }
 
-    log::info!(
-        "creating system data directory with permissions 0700 at {}",
-        config.system_data_path.to_str().unwrap(),
-    );
     let system_data_path = config.system_data_path.clone();
     let auth_value_path = config.auth_value_path();
+
     log::info!("initializing secret store");
-    TotpStore::init(
-        Box::new(ConstPresenceVerifier::new(true)),
-        config.clone(),
-    )?;
+    config.pv_method = PresenceVerificationMethod::None;
+    TotpStore::init(config.clone())?;
 
     if !local {
         with_uid_as_euid(||{
@@ -187,7 +188,8 @@ mod tests {
             true,
             swtpm.tcti.clone(),
             Some(dir.path().join("system")),
-            Some(dir.path().join("user"))
+            Some(dir.path().join("user")),
+            None,
         );
         run(&cfg_path, config.clone(), &get_user_name(), false, dir.path()).unwrap();
 
@@ -214,7 +216,8 @@ mod tests {
             true,
             swtpm.tcti.clone(),
             Some(dir.path().join("system")),
-            Some(dir.path().join("user"))
+            Some(dir.path().join("user")),
+            None,
         );
         run(&cfg_path, config.clone(), &get_user_name(), false, &PathBuf::from("/")).unwrap();
 
@@ -238,7 +241,8 @@ mod tests {
             true,
             swtpm.tcti.clone(),
             Some(dir.path().join("system")),
-            Some(dir.path().join("user"))
+            Some(dir.path().join("user")),
+            None,
         );
         match run(&cfg_path, config, &get_user_name(), false, &PathBuf::from("/")).unwrap_err() {
             Error::PermissionError => {},
@@ -255,7 +259,8 @@ mod tests {
             true,
             swtpm.tcti.clone(),
             Some(dir.path().join("system")),
-            Some(dir.path().join("user"))
+            Some(dir.path().join("user")),
+            None,
         );
         run(&cfg_path, config.clone(), &get_user_name(), true, dir.path()).unwrap();
 

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
-use totpm::{args::Opts, config::{absolute_path, local_path, Config}, result::Result};
+use totpm::{args::Opts, config::{absolute_path, local_path, Config}, presence_verification::PresenceVerificationMethod, result::Result};
 
 fn main() {
     let opts = Opts::parse();
@@ -14,6 +14,10 @@ fn main() {
     }
 
     let config_path = resolve_config_path(false, opts.config.as_deref());
+    run_command(opts, &config_path).unwrap();
+}
+
+fn run_command(opts: Opts, config_path: &Path) -> Result<()> {
     match opts.command {
         totpm::args::Command::Add { service, account, digits, interval } => {
             totpm::commands::add::run(
@@ -45,12 +49,13 @@ fn main() {
                 account.as_deref(),
             )
         },
-        totpm::args::Command::Init { tpm, system_data_path, user_data_path, user, local } => {
+        totpm::args::Command::Init { tpm, system_data_path, user_data_path, user, presence_verification, local } => {
             let config_path = resolve_config_path(local, opts.config.as_deref());
             let user_name = user.as_deref().unwrap_or("totpm");
+            let pv = presence_verification.map(|x| PresenceVerificationMethod::from_str(&x)).transpose()?;
             totpm::commands::init::run(
                 &config_path,
-                Config::default(local, tpm, system_data_path, user_data_path),
+                Config::default(local, tpm, system_data_path, user_data_path, pv),
                 user_name,
                 local,
                 &PathBuf::from("/usr/local/bin"),
@@ -63,11 +68,11 @@ fn main() {
                 yes_i_know_what_i_am_doing,
             )
         },
-    }.unwrap()
+    }
 }
 
 /// Loads a config from the given path.
-fn load_config(config_path: PathBuf) -> Result<Config> {
+fn load_config(config_path: &Path) -> Result<Config> {
     let config_str = std::fs::read_to_string(config_path)?;
     Ok(Config::deserialize(toml::Deserializer::new(&config_str))?)
 }

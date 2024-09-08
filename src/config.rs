@@ -1,9 +1,10 @@
-use std::{env,
-    path::Path};
+use std::{env, path::Path};
 #[allow(deprecated)]
 use std::{env::home_dir, path::PathBuf};
 
 use serde_derive::{Deserialize, Serialize};
+
+use crate::presence_verification::PresenceVerificationMethod;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Config {
@@ -17,6 +18,12 @@ pub struct Config {
 
     /// Max number of seconds to wait for presence verification.
     pub pv_timeout: u8,
+
+    /// Method to use for presence verification.
+    /// Valid values are:
+    /// - fprintd: ask for the user's fingerprint by calling fprintd over dbus
+    /// - none: don't verify user presence; only recommended for local installs
+    pub pv_method: PresenceVerificationMethod,
 }
 
 impl Config {
@@ -25,7 +32,8 @@ impl Config {
         local: bool,
         tpm: String,
         system_data_path: Option<PathBuf>,
-        user_data_path: Option<PathBuf>
+        user_data_path: Option<PathBuf>,
+        presence_verification: Option<PresenceVerificationMethod>,
     ) -> Self {
         Config {
             tpm: tpm,
@@ -38,6 +46,13 @@ impl Config {
             ),
             user_data_path: user_data_path.unwrap_or(PathBuf::from(".local/state/totpm")),
             pv_timeout: 10,
+            pv_method: presence_verification.unwrap_or(
+                if local {
+                    PresenceVerificationMethod::None
+                } else {
+                    PresenceVerificationMethod::Fprintd
+                }                
+            )
         }
     }
 
@@ -86,12 +101,13 @@ mod tests {
         #[allow(deprecated)]
         let home_dir = env::home_dir().unwrap();
 
-        let cfg = Config::default(true, "device".to_string(), None, None);
+        let cfg = Config::default(true, "device".to_string(), None, None, None);
         assert!(cfg.system_data_path.starts_with(&home_dir));
         assert!(cfg.user_data_path.is_relative());
         assert!(cfg.auth_value_path().starts_with(&home_dir));
         assert!(cfg.primary_key_handle_path().starts_with(&home_dir));
         assert!(cfg.secrets_db_path().starts_with(&home_dir));
+        assert_eq!(cfg.pv_method, PresenceVerificationMethod::None);
     }
 
     #[test]
@@ -99,11 +115,12 @@ mod tests {
         #[allow(deprecated)]
         let home_dir = env::home_dir().unwrap();
 
-        let cfg = Config::default(false, "device".to_string(), None, None);
+        let cfg = Config::default(false, "device".to_string(), None, None, None);
         assert!(cfg.system_data_path.starts_with("/var/lib"));
         assert!(cfg.user_data_path.is_relative());
         assert!(cfg.auth_value_path().starts_with("/var/lib"));
         assert!(cfg.primary_key_handle_path().starts_with("/var/lib"));
         assert!(cfg.secrets_db_path().starts_with(&home_dir));
+        assert_eq!(cfg.pv_method, PresenceVerificationMethod::Fprintd);
     }
 }

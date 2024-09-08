@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use rpassword::read_password;
 
-use crate::{base32, config::Config, presence_verification::fprintd::FprintdPresenceVerifier, result::{Error, Result}, totp_store::TotpStore};
+use crate::{base32, config::Config, result::{Error, Result}, totp_store::TotpStore};
 
 pub fn run(
     config: Config,
@@ -17,7 +17,7 @@ pub fn run(
 
     log::info!("adding secret for {} @ {}", account, service);
     let secret_bytes = base32::decode(&secret).ok_or(Error::Base32Error)?;
-    let mut store = TotpStore::with_tpm(Box::new(FprintdPresenceVerifier::new(config.pv_timeout)), config)?;
+    let mut store = TotpStore::with_tpm(config)?;
     store.add(service, account, digits, interval, &secret_bytes)?;
     Ok(())
 }

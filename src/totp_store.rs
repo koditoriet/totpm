@@ -3,7 +3,7 @@ use std::{fs::Permissions, io::Write, marker::PhantomData, os::unix::fs::Permiss
 use rand::RngCore;
 use tss_esapi::{handles::KeyHandle, structures::{Digest, Public}, traits::{Marshall, UnMarshall}};
 
-use crate::{config::Config, db::{self, model::Secret}, presence_verification::PresenceVerifier, privileges::{drop_privileges, with_uid_as_euid}, tpm::{self, HmacKey, TPM}};
+use crate::{config::Config, db::{self, model::Secret}, presence_verification::{factory::create_presence_verifier, PresenceVerifier}, privileges::{drop_privileges, with_uid_as_euid}, tpm::{self, HmacKey, TPM}};
 
 #[derive(Debug)]
 pub enum Error {
@@ -89,21 +89,24 @@ impl TotpStore<WithoutTPM> {
     }
 
     /// Initializes a secret store.
-    pub fn init(
-        presence_verifier: Box<dyn PresenceVerifier>,
-        config: Config,
-    ) -> Result<()> {
+    pub fn init(config: Config) -> Result<()> {
         if config.auth_value_path().is_file() || config.primary_key_handle_path().is_file() {
             return Err(Error::AlreadyInitialized);
         }
-        let mut tpm = TPM::new(presence_verifier, &config.tpm)?;
+        let pv = create_presence_verifier(config.pv_method, config.pv_timeout);
+        let mut tpm = TPM::new(pv, &config.tpm)?;
+
+        log::info!(
+            "creating system data directory with permissions 0700 at {}",
+            config.system_data_path.to_str().unwrap(),
+        );    
+        std::fs::create_dir_all(&config.system_data_path)?;
+        std::fs::set_permissions(&config.system_data_path, Permissions::from_mode(0o700))?;
 
         log::info!(
             "creating auth value file with permissions 0600 at {}",
             config.auth_value_path().to_str().unwrap(),
         );
-        std::fs::create_dir_all(&config.system_data_path)?;
-        std::fs::set_permissions(&config.system_data_path, Permissions::from_mode(0o700))?;
         let mut auth_value_file = std::fs::File::create(config.auth_value_path())?;
         auth_value_file.set_permissions(Permissions::from_mode(0o600))?;
 
@@ -130,13 +133,10 @@ impl TotpStore<WithoutTPM> {
 
     /// Clears the secret store.
     /// If system is true, also removes all system data.
-    pub fn clear(
-        presence_verifier: Box<dyn PresenceVerifier>,
-        config: Config,
-        system: bool,
-    ) -> Result<()> {
+    pub fn clear(config: Config, system: bool) -> Result<()> {
         if system {
-            let mut tpm = TPM::new(presence_verifier, &config.tpm)?;
+            let pv = create_presence_verifier(config.pv_method, config.pv_timeout);
+            let mut tpm = TPM::new(pv, &config.tpm)?;
 
             if config.auth_value_path().is_file() && config.primary_key_handle_path().is_file() {
                 let pk_handle = read_primary_key_persistent_handle(&config)?;
@@ -180,10 +180,12 @@ impl TotpStore<WithoutTPM> {
 impl TotpStore<WithTPM> {
     /// Creates a TOTP store client which uses the TPM.
     /// Drops privileges immediately after reading the auth value.
-    pub fn with_tpm(
-        presence_verifier: Box<dyn PresenceVerifier>,
-        config: Config,
-    ) -> Result<Self> {
+    pub fn with_tpm(config: Config) -> Result<Self> {
+        let pv = create_presence_verifier(config.pv_method, config.pv_timeout);
+        Self::with_tpm_ex(pv, config)
+    }
+
+    fn with_tpm_ex(pv: Box<dyn PresenceVerifier>, config: Config) -> Result<Self> {
         log::info!("Creating TOTP store with the following settings:");
         log::info!("- auth value path: {}", config.auth_value_path().to_str().unwrap());
         log::info!("- primary key handle path: {}", config.primary_key_handle_path().to_str().unwrap());
@@ -197,7 +199,7 @@ impl TotpStore<WithTPM> {
 
         drop_privileges();
 
-        let mut tpm = TPM::new(presence_verifier, &config.tpm)?;
+        let mut tpm = TPM::new(pv, &config.tpm)?;
         let primary_key = tpm.get_persistent_primary(handle, auth_value.try_into()?)?;
         Ok(TotpStore {
             config: config,
@@ -284,14 +286,16 @@ fn read_auth_value(config: &Config) -> Result<Vec<u8>> {
 mod tests {
     use tempfile::TempDir;
     use testutil::tpm::SwTpm;
-    use tss_esapi::constants::response_code::FormatOneResponseCode;
-    use tss_esapi::constants::response_code::FormatZeroResponseCode;
-    use tss_esapi::constants::response_code::Tss2ResponseCode::FormatOne;
-    use tss_esapi::constants::response_code::Tss2ResponseCode::FormatZero;
+    use tss_esapi::constants::response_code::{
+        FormatOneResponseCode,
+        FormatZeroResponseCode,
+        Tss2ResponseCode::{FormatOne, FormatZero}
+    };
     use tss_esapi::Error::Tss2Error;
 
     use crate::presence_verification;
     use crate::presence_verification::ConstPresenceVerifier;
+    
 
     use super::*;
 
@@ -300,7 +304,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         assert_eq!(config.auth_value_path().exists(), false);
         assert_eq!(config.primary_key_handle_path().exists(), false);
-        match TotpStore::with_tpm(pv(true), config.clone()) {
+        match TotpStore::with_tpm(config.clone()) {
             Ok(_) => panic!("with_tpm did not fail even though system data directory was missing"),
             Err(Error::NotInitialized) => {},
             Err(e) => panic!("with_tpm failed with the wrong error: {:#?}", e),
@@ -310,8 +314,8 @@ mod tests {
     #[test]
     fn with_tpm_fails_if_presence_verification_fails() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        match TotpStore::with_tpm(pv(false), config.clone()) {
+        TotpStore::init(config.clone()).unwrap();
+        match TotpStore::with_tpm_ex(Box::new(ConstPresenceVerifier::new(false)), config.clone()) {
             Ok(_) => panic!("with_tpm did not fail even though presence verification failed"),
             Err(Error::TpmError(tpm::Error::PresenceVerificationFailed)) => {},
             Err(e) => panic!("with_tpm failed with the wrong error: {:#?}", e),
@@ -321,8 +325,8 @@ mod tests {
     #[test]
     fn with_tpm_fails_if_presence_verification_errors() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        match TotpStore::with_tpm(Box::new(FailingPresenceVerifier), config.clone()) {
+        TotpStore::init(config.clone()).unwrap();
+        match TotpStore::with_tpm_ex(Box::new(FailingPresenceVerifier), config.clone()) {
             Ok(_) => panic!("with_tpm did not fail even though presence verification failed"),
             Err(Error::TpmError(tpm::Error::PresenceVerificationError(_))) => {},
             Err(e) => panic!("with_tpm failed with the wrong error: {:#?}", e),
@@ -332,15 +336,15 @@ mod tests {
     #[test]
     fn with_tpm_succeeds_after_init() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        TotpStore::with_tpm(config).unwrap();
     }
 
     #[test]
     fn init_fails_if_already_initialized() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let err = TotpStore::init(pv(true), config).unwrap_err();
+        TotpStore::init(config.clone()).unwrap();
+        let err = TotpStore::init(config).unwrap_err();
         match err {
             Error::AlreadyInitialized => {},
             e => panic!("wrong error: {:#?}", e),
@@ -350,7 +354,7 @@ mod tests {
     #[test]
     fn list_on_empty_store_returns_empty_list() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
         let secrets = TotpStore::without_tpm(config).list(None, None).unwrap();
         assert_eq!(secrets, vec![]);
     }
@@ -358,8 +362,8 @@ mod tests {
     #[test]
     fn list_after_add_lists_added_secrets() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
         let secrets = store.list(None, None).unwrap();
@@ -369,8 +373,8 @@ mod tests {
     #[test]
     fn list_properly_filters_secrets() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
         assert_eq!(store.list(Some("firstsvc"), None).unwrap(), vec![secret1.clone()]);
@@ -392,8 +396,8 @@ mod tests {
     #[test]
     fn del_deletes_secrets() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
         store.del(secret1.id).unwrap();
@@ -404,8 +408,8 @@ mod tests {
     #[test]
     fn del_on_nonexistent_id_errors() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         match store.del(secret.id + 1).unwrap_err() {
             Error::DBError(db::Error::NoSuchElement) => {},
@@ -416,8 +420,8 @@ mod tests {
     #[test]
     fn can_generate_codes_from_added_secret() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         store.gen(secret.id, SystemTime::now()).unwrap();
     }
@@ -425,8 +429,8 @@ mod tests {
     #[test]
     fn gen_on_nonexistent_id_errors() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config).unwrap();
         let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         match store.gen(secret.id + 1, SystemTime::now()).unwrap_err() {
             Error::DBError(db::Error::NoSuchElement) => {},
@@ -437,13 +441,13 @@ mod tests {
     #[test]
     fn with_tpm_errors_after_system_clear() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config.clone()).unwrap();
         store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         drop(store);
 
-        TotpStore::clear(pv(true), config.clone(), true).unwrap();
-        match TotpStore::with_tpm(pv(true), config.clone()).unwrap_err() {
+        TotpStore::clear(config.clone(), true).unwrap();
+        match TotpStore::with_tpm(config.clone()).unwrap_err() {
             Error::NotInitialized => {},
             error => panic!("wrong error: {:#?}", error),
         }
@@ -452,17 +456,17 @@ mod tests {
     #[test]
     fn primary_key_is_gone_from_tpm_after_system_clear() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
         let auth_value_backup = tempfile::NamedTempFile::new().unwrap();
         let primary_key_handle_backup = tempfile::NamedTempFile::new().unwrap();
         std::fs::copy(config.auth_value_path(), auth_value_backup.path()).unwrap();
         std::fs::copy(config.primary_key_handle_path(), primary_key_handle_backup.path()).unwrap();
-        TotpStore::clear(pv(true), config.clone(), true).unwrap();
+        TotpStore::clear(config.clone(), true).unwrap();
 
         std::fs::copy(auth_value_backup.path(), config.auth_value_path()).unwrap();
         std::fs::copy(primary_key_handle_backup.path(), config.primary_key_handle_path()).unwrap();
 
-        match TotpStore::with_tpm(pv(true), config.clone()).unwrap_err() {
+        match TotpStore::with_tpm(config.clone()).unwrap_err() {
             Error::TpmError(tpm::Error::TpmError(Tss2Error(FormatOne(FormatOneResponseCode(395))))) => {},
             err => panic!("wrong error: {:#?}", err),
         }
@@ -471,17 +475,17 @@ mod tests {
     #[test]
     fn new_primary_key_can_not_be_used_to_access_old_secrets() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config.clone()).unwrap();
         let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         drop(store);
         let secrets_db_backup = tempfile::NamedTempFile::new().unwrap();
         std::fs::copy(config.secrets_db_path(), secrets_db_backup.path()).unwrap();
-        TotpStore::clear(pv(true), config.clone(), true).unwrap();
+        TotpStore::clear(config.clone(), true).unwrap();
         
-        TotpStore::init(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
         std::fs::copy(secrets_db_backup.path(), config.secrets_db_path()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config.clone()).unwrap();
         match store.gen(secret.id, SystemTime::now()).unwrap_err() {
             Error::TpmError(tpm::Error::TpmError(Tss2Error(FormatZero(FormatZeroResponseCode(655370))))) => {},
             Error::TpmError(tpm::Error::TpmError(Tss2Error(FormatOne(FormatOneResponseCode(479))))) => {},
@@ -492,13 +496,13 @@ mod tests {
     #[test]
     fn local_clear_removes_all_secrets_but_not_auth_file() {
         let (config, _tepmdir, _swtpm) = setup();
-        TotpStore::init(pv(true), config.clone()).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config.clone()).unwrap();
+        TotpStore::init(config.clone()).unwrap();
+        let mut store = TotpStore::with_tpm(config.clone()).unwrap();
         let old_secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
         drop(store);
 
-        TotpStore::clear(pv(true), config.clone(), false).unwrap();
-        let mut store = TotpStore::with_tpm(pv(true), config.clone()).unwrap();
+        TotpStore::clear(config.clone(), false).unwrap();
+        let mut store = TotpStore::with_tpm(config.clone()).unwrap();
         assert_eq!(store.list(None, None).unwrap(), vec![]);
         match store.gen(old_secret.id, SystemTime::now()).unwrap_err() {
             Error::DBError(db::Error::NoSuchElement) => {},
@@ -511,12 +515,9 @@ mod tests {
         let sysdir = tempdir.path().join("sys");
         let userdir = tempdir.path().join("user");
         let swtpm = SwTpm::new();
-        let cfg = Config::default(true, swtpm.tcti.clone(), Some(sysdir), Some(userdir));
+        let pv = Some(presence_verification::PresenceVerificationMethod::None);
+        let cfg = Config::default(true, swtpm.tcti.clone(), Some(sysdir), Some(userdir), pv);
         (cfg, tempdir, swtpm)
-    }
-
-    fn pv(value: bool) -> Box<dyn PresenceVerifier> {
-        Box::new(ConstPresenceVerifier::new(value))
     }
 
     struct FailingPresenceVerifier;
