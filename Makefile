@@ -24,6 +24,9 @@ totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm: totpm-$(VERSION)-1.fc$(FEDOR
 .PHONY: fedora-package
 fedora-package: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm
 
+.PHONY: srpm
+srpm: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm
+
 .PHONY: test
 test:
 	cargo test --features=dbus-tests,install
