@@ -41,7 +41,7 @@ pub fn decode(base32: &str) -> Option<Vec<u8>> {
     let capital_a = 65u8;
     let digit_2_minus_26 = 24u8;
     let mut buffer = BitBuffer::new();
-    for c in base32.chars() {
+    for c in base32.to_ascii_uppercase().chars() {
         let bits = match c {
             'A' ..= 'Z' => { let b: u8 = c.try_into().unwrap(); b - capital_a }
             '2' ..= '7' => { let b: u8 = c.try_into().unwrap(); b - digit_2_minus_26 },
@@ -78,13 +78,33 @@ mod tests {
     }
 
     #[test]
+    fn decode_handles_lowercase_base32() {
+        assert_eq!(
+            decode("nbswy3dp"),
+            Some("hello".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode("nbSWy3Dp"),
+            Some("hello".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode("obxxiylun4======"),
+            Some("potato".as_bytes().to_vec()),
+        );
+        assert_eq!(
+            decode("obxxiylun4"),
+            Some("potato".as_bytes().to_vec()),
+        );
+    }
+
+    #[test]
     fn decode_returns_none_on_invalid_char() {
         assert_eq!(
             decode("NBSWY3D?"),
             None,
         );
         assert_eq!(
-            decode("xBSWY3DP"),
+            decode("1BSWY3DP"),
             None,
         );
     }
