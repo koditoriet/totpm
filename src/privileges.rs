@@ -43,6 +43,6 @@ pub fn with_uid_as_euid<T, F: FnOnce() -> T>(f: F) -> T {
 
 pub fn is_root() -> bool {
     unsafe {
-        geteuid() == 0
+        getuid() == 0
     }
 }

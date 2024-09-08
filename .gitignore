@@ -1,1 +1,4 @@
 /target
+/results_totpm
+*.rpm
+*.tar.gz

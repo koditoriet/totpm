@@ -1,0 +1,2 @@
+#Type Name   ID  GECOS                        Home directory  Shell
+u     totpm  -   "TPM-backed TOTP client"     /run/totpm      /sbin/nologin

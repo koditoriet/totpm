@@ -205,9 +205,10 @@ impl FprintdPresenceVerifier {
 }
 
 #[cfg(test)]
+#[cfg(feature = "dbus-tests")]
 mod tests {
     use dbus::MethodErr;
-    use sequential_test::sequential;
+    use serial_test::serial;
     use testutil::fprintd::{FprintdMethod, FprintdMockBuilder, DEVICE_PATH};
     use crate::presence_verification;
     use super::*;
@@ -220,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn failed_getdefaultdevice_fails_presence_verification() {
         let _mock = FprintdMockBuilder::<Status>::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Err(MethodErr::no_arg())))
@@ -231,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn failed_claim_fails_presence_verification() {
         let _mock = FprintdMockBuilder::<Status>::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -243,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn failed_verifystart_fails_presence_verification() {
         let _mock = FprintdMockBuilder::<Status>::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -257,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn timeout_makes_presence_verification_succeed_with_result_false() {
         let _mock = FprintdMockBuilder::<Status>::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -271,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn successful_scan_makes_presence_verification_succeed_with_result_true() {
         let _mock = FprintdMockBuilder::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -287,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn no_match_followed_by_match_makes_presence_verification_succeed() {
         let _mock = FprintdMockBuilder::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -307,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn swipe_too_short_followed_by_match_makes_presence_verification_succeed() {
         let _mock = FprintdMockBuilder::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -325,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn disconnected_makes_presence_verification_fail() {
         let _mock = FprintdMockBuilder::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))
@@ -343,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    #[sequential]
+    #[serial]
     fn unknown_error_makes_presence_verification_fail() {
         let _mock = FprintdMockBuilder::new()
             .expect_method(FprintdMethod::GetDefaultDevice(Ok(DEVICE_PATH.to_owned())))

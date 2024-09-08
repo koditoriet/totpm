@@ -1,9 +1,9 @@
 #[cfg(feature = "install")]
-use std::{fs::Permissions, os::unix::fs::PermissionsExt};
+use std::{fs, fs::Permissions, os::unix::fs::PermissionsExt};
 
-use std::{fs::{self}, os::unix::fs::MetadataExt, path::{Path, PathBuf}, process::Command};
+use std::{os::unix::fs::MetadataExt, path::{Path, PathBuf}, process::Command};
 use log::warn;
-use crate::{config::Config, presence_verification::ConstPresenceVerifier, privileges::is_root, result::{Error, Result}, totp_store::TotpStore};
+use crate::{config::Config, presence_verification::ConstPresenceVerifier, privileges::{is_root, with_uid_as_euid}, result::{Error, Result}, totp_store::TotpStore};
 
 const EXE_NAME: &str = "totpm";
 
@@ -27,38 +27,40 @@ pub fn run(
         )
     }
 
-    log::info!("initializing secret store");
-
-    log::info!("creating config parent directory at {}", cfg_path.parent().unwrap().to_str().unwrap());
-    fs::create_dir_all(cfg_path.parent().unwrap())?;
-
-    log::info!("writing config to {}", cfg_path.to_str().unwrap());
-    fs::write(cfg_path, toml::to_string(&config)?)?;
-
     log::info!(
         "creating system data directory with permissions 0700 at {}",
         config.system_data_path.to_str().unwrap(),
     );
     let system_data_path = config.system_data_path.clone();
     let auth_value_path = config.auth_value_path();
+    log::info!("initializing secret store");
     TotpStore::init(
         Box::new(ConstPresenceVerifier::new(true)),
-        config,
+        config.clone(),
     )?;
 
     if !local {
-        let uid = install(user, exe_install_dir)?;
-        log::info!("chowning system data directory to user {} (uid {})", user, uid);
-        std::os::unix::fs::chown(&system_data_path, Some(uid), None)?;
-        log::info!("chowning auth value file to {}", user);
-        std::os::unix::fs::chown(auth_value_path, Some(uid), None)?;
+        with_uid_as_euid(||{
+            let uid = install(&config, cfg_path, user, exe_install_dir)?;
+            log::info!("chowning system data directory to user {} (uid {})", user, uid);
+            std::os::unix::fs::chown(&system_data_path, Some(uid), None)?;
+            log::info!("chowning auth value file to {}", user);
+            std::os::unix::fs::chown(auth_value_path, Some(uid), None)?;
+            Ok::<(), Error>(())
+        })?;
     }
 
     Ok(())
 }
 
 #[cfg(feature = "install")]
-fn install(user: &str, exe_install_dir: &Path) -> Result<u32> {
+fn install(config: &Config, cfg_path: &Path, user: &str, exe_install_dir: &Path) -> Result<u32> {
+    log::info!("creating config parent directory at {}", cfg_path.parent().unwrap().to_str().unwrap());
+    fs::create_dir_all(cfg_path.parent().unwrap())?;
+
+    log::info!("writing config to {}", cfg_path.to_str().unwrap());
+    fs::write(cfg_path, toml::to_string(config)?)?;
+
     log::info!("creating user '{}'", user);
     let useradd_result = Command::new("/usr/sbin/useradd")
         .arg("-r")
@@ -81,14 +83,14 @@ fn install(user: &str, exe_install_dir: &Path) -> Result<u32> {
         executable_path.to_str().unwrap(),
         moved_executable_path.to_str().unwrap(),
     );
-    std::fs::copy(&executable_path,&moved_executable_path)?;
+    std::fs::copy(&executable_path, &moved_executable_path)?;
     std::os::unix::fs::chown(&moved_executable_path, Some(uid), None)?;
     std::fs::set_permissions(&moved_executable_path, Permissions::from_mode(0o4755))?;
     Ok(uid)
 }
 
 #[cfg(not(feature = "install"))]
-fn install(user: &str, _exe_install_dir: &Path) -> Result<u32> {
+fn install(_config: &Config, _cfg_path: &Path, user: &str, _exe_install_dir: &Path) -> Result<u32> {
     get_user_id(user)
 }
 
@@ -190,6 +192,7 @@ mod tests {
         run(&cfg_path, config.clone(), &get_user_name(), false, dir.path()).unwrap();
 
         check_installed_exe(&dir);
+        check_installed_config(&cfg_path);
 
         assert!(config.auth_value_path().is_file());
         assert_eq!(config.auth_value_path().metadata().unwrap().permissions().mode(), 0o100600);
@@ -277,5 +280,18 @@ mod tests {
     }
 
     #[cfg(not(feature = "install"))]
-    fn check_installed_exe(_dir: &TempDir) {}
+    fn check_installed_exe(dir: &TempDir) {
+        let installed_exe_path = dir.path().join(EXE_NAME);
+        assert!(!installed_exe_path.exists());
+    }
+
+    #[cfg(feature = "install")]
+    fn check_installed_config(cfg_path: &Path) {
+        assert!(cfg_path.is_file());
+    }
+
+    #[cfg(not(feature = "install"))]
+    fn check_installed_config(cfg_path: &Path) {
+        assert!(!cfg_path.exists());
+    }
 }
