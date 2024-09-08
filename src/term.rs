@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn pick_one_returns_none_on_non_terminal_input() {
         assert_eq!(
-            pick_one(&mut VecDeque::new(), &mut Vec::new(), "hello", vec![1,2,3].iter()),
+            pick_one(&mut VecDeque::new(), &mut Vec::new(), "hello", [1,2,3].iter()),
             None,
         )
     }
@@ -85,7 +85,7 @@ mod tests {
         let mut term = MockTerminal::new();
         let (mut inp, mut out) = term.stdin_stdout();
         assert_eq!(
-            pick_one(&mut inp, &mut out, "hello", vec![].iter()),
+            pick_one(&mut inp, &mut out, "hello", [].iter()),
             None as Option<&u32>,
         )
     }
@@ -95,7 +95,7 @@ mod tests {
         let mut term = MockTerminal::new().write_stdin("0");
         let (mut inp, mut out) = term.stdin_stdout();
         assert_eq!(
-            pick_one(&mut inp, &mut out, "hello", vec![1, 2, 3].iter()),
+            pick_one(&mut inp, &mut out, "hello", [1, 2, 3].iter()),
             None as Option<&u32>,
         )
     }
@@ -106,11 +106,11 @@ mod tests {
         let (mut inp, mut out) = term.stdin_stdout();
         let mut non_terminal_stdout = Vec::new();
         assert_eq!(
-            pick_one(&mut inp, &mut out, "hello", vec!["x"].iter()),
+            pick_one(&mut inp, &mut out, "hello", ["x"].iter()),
             Some(&"x"),
         );
         assert_eq!(
-            pick_one(&mut inp, &mut non_terminal_stdout, "hello", vec!["x"].iter()),
+            pick_one(&mut inp, &mut non_terminal_stdout, "hello", ["x"].iter()),
             Some(&"x"),
         );
     }
@@ -129,7 +129,7 @@ mod tests {
             .write_stdin("1");
         let (mut inp, mut out) = term.stdin_stdout();
         assert_eq!(
-            pick_one(&mut inp, &mut out, "hello", vec!["foo", "bar"].iter()),
+            pick_one(&mut inp, &mut out, "hello", ["foo", "bar"].iter()),
             None as Option<&&str>,
         );
     }
@@ -146,14 +146,14 @@ mod tests {
             .write_stdin("0");
         let (mut inp, mut out) = term.stdin_stdout();
         assert_eq!(
-            pick_one(&mut inp, &mut out, "hello", vec!["foo", "bar", "baz"].iter()),
+            pick_one(&mut inp, &mut out, "hello", ["foo", "bar", "baz"].iter()),
             None as Option<&&str>,
         );
     }
 
     #[test]
     fn pick_one_returns_chosen_input() {
-        let items = vec![1, 2, 3, 4, 5];
+        let items = [1, 2, 3, 4, 5];
         let mut term = MockTerminal::new()
             .wait_stdout()
             .write_stdin("1") // First item

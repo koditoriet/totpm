@@ -57,10 +57,10 @@ pub struct WithoutTPM;
 
 impl <P> TotpStore<P> {
     pub fn del(&mut self, secret_id: i64) -> Result<()> {
-        let result = self.with_db(|db| {
+        self.with_db(|db| {
             db.del_secret(secret_id)
         })?;
-        Ok(result)
+        Ok(())
     }
 
     pub fn list(&self, service: Option<&str>, account: Option<&str>) -> Result<Vec<Secret>> {
@@ -71,7 +71,7 @@ impl <P> TotpStore<P> {
     }
 
     fn with_db<T, F: FnOnce(&db::DB) -> db::Result<T>>(&self, f: F) -> db::Result<T> {
-        Ok(db::with_db(self.config.secrets_db_path(), f)?)
+        db::with_db(self.config.secrets_db_path(), f)
     }
 }
 
@@ -81,7 +81,7 @@ impl TotpStore<WithoutTPM> {
     pub fn without_tpm(config: Config) -> TotpStore<WithoutTPM> {
         drop_privileges();
         TotpStore {
-            config: config,
+            config,
             tpm: None,
             primary_key: None,
             phantom: PhantomData,
@@ -203,7 +203,7 @@ impl TotpStore<WithTPM> {
         drop_privileges();
 
         Ok(TotpStore {
-            config: config,
+            config,
             tpm: Some(tpm),
             primary_key: Some(primary_key),
             phantom: PhantomData,

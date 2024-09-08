@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{de::IntoDeserializer, Deserialize, Serialize};
 
 pub mod fprintd;
@@ -18,11 +20,13 @@ pub enum PresenceVerificationMethod {
     None,
 }
 
-impl PresenceVerificationMethod {
-    pub fn from_str(s: &str) -> crate::result::Result<Self> {
+impl FromStr for PresenceVerificationMethod {
+    fn from_str(s: &str) -> crate::result::Result<Self> {
         Self::deserialize(s.into_deserializer())
             .map_err(|_: serde::de::value::Error| crate::result::Error::InvalidPVMethod(s.to_string()))
     }
+    
+    type Err = crate::result::Error;
 }
 
 pub trait PresenceVerifier {

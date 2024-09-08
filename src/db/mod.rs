@@ -116,7 +116,7 @@ fn ensure_db_file_exists<P : AsRef<Path>>(db_path: P) -> Result<()> {
     let db_dir = db_path.as_ref().parent().unwrap();
     if !db_dir.exists() {
         log::info!("creating secrets database directory with permissions 0700 at {}", db_dir.to_str().unwrap());
-        std::fs::create_dir_all(&db_dir)?;
+        std::fs::create_dir_all(db_dir)?;
     }
     if !db_dir.is_dir() {
         return Err(Error::DbDirIsNotADir);

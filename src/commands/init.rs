@@ -92,7 +92,7 @@ fn needs_root(cfg_path: &Path, config: &Config, user: &str, local: bool, exe_ins
         log::info!("does not need root because we're doing local init");
         return false;
     }
-    let totpm_user_id = get_user_id(&user).unwrap();
+    let totpm_user_id = get_user_id(user).unwrap();
     if !is_effective_user(totpm_user_id) {
         log::info!("needs root because we're not the totpm user");
         return true;
@@ -136,7 +136,7 @@ fn can_create_file(uid: u32, path: &Path) -> bool {
     }
     match longest_existing_prefix(path) {
         Some(p) => can_create_dir(uid, &p),
-        None => return false,
+        None => false,
     }
 }
 

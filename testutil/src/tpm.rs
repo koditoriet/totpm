@@ -15,6 +15,12 @@ impl Drop for SwTpm {
     }
 }
 
+impl Default for SwTpm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SwTpm {
     pub fn new() -> Self {
         let tpm_dir = tempfile::tempdir().unwrap();

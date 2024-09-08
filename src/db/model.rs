@@ -24,12 +24,12 @@ impl Secret {
     ) -> Self {
         Secret {
             id: 0,
-            service: service,
-            account: account,
+            service,
+            account,
             digits: digits.unwrap_or(6),
             interval: interval.unwrap_or(30),
-            public_data: public_data,
-            private_data: private_data
+            public_data,
+            private_data,
         }
     }
 }

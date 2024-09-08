@@ -102,7 +102,7 @@ impl TPM {
         let mut initial = [0u8;32];
         rand::thread_rng().fill_bytes(&mut initial);
 
-        return self.0.execute_with_nullauth_session(|ctx| {
+        self.0.execute_with_nullauth_session(|ctx| {
             let cpkr = ctx.create_primary(
                 Hierarchy::Owner,
                 public,
@@ -114,15 +114,15 @@ impl TPM {
             let persistent_handle = find_next_persistent_handle(ctx)?;
             ctx.evict_control(Provision::Owner, cpkr.key_handle.into(), persistent_handle)?;
             ctx.flush_context(cpkr.key_handle.into())?;
-            return Ok(persistent_handle);
-        });
+            Ok(persistent_handle)
+        })
     }
 
     pub fn get_persistent_primary(&mut self, handle: u32, auth_value: Auth) -> Result<KeyHandle> {
         self.0.execute_with_nullauth_session(|ctx| {
             let handle = ctx.tr_from_tpm_public(TpmHandle::Persistent(PersistentTpmHandle::new(handle)?))?;
             ctx.tr_set_auth(handle, auth_value)?;
-            return Ok(handle.into());
+            Ok(handle.into())
         })
     }
 
@@ -166,7 +166,7 @@ impl TPM {
                 None
             )
         })?;
-        return Ok(HmacKey::new(primary_key, hmac_key.out_public, hmac_key.out_private));
+        Ok(HmacKey::new(primary_key, hmac_key.out_public, hmac_key.out_private))
     }
 
     pub fn hmac(&mut self, hmac_key: HmacKey, buffer: MaxBuffer) -> tss_esapi::Result<Digest> {
@@ -174,7 +174,7 @@ impl TPM {
             let key_handle = ctx.load(hmac_key.primary_key, hmac_key.private, hmac_key.public)?;
             let result = ctx.hmac(key_handle.into(), buffer, HashingAlgorithm::Sha1);
             ctx.flush_context(key_handle.into())?;
-            return result
+            result
         })
     }
 }

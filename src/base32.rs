@@ -8,7 +8,7 @@ impl BitBuffer {
         BitBuffer { bit_offset: 0u8, bytes: Vec::new() }
     }
 
-    fn write(&mut self, data: u8, bits: u8) -> () {
+    fn write(&mut self, data: u8, bits: u8) {
         assert!(bits <= 8);
         if self.bit_offset + bits > 8 {
             let second_write_bits = (self.bit_offset + bits) % 8;
@@ -27,7 +27,7 @@ impl BitBuffer {
         }
     }
 
-    fn to_bytes(mut self) -> Vec<u8> {
+    fn into_bytes(mut self) -> Vec<u8> {
         if self.bit_offset != 0 {
             self.bytes.pop();
             self.bytes
@@ -50,7 +50,7 @@ pub fn decode(base32: &str) -> Option<Vec<u8>> {
         };
         buffer.write(bits, 5);
     };
-    Some(buffer.to_bytes())
+    Some(buffer.into_bytes())
 }
 
 #[cfg(test)]
@@ -115,7 +115,7 @@ mod tests {
         buf.write(1u8, 1);
         buf.write(64u8, 7);
         assert_eq!(
-            buf.to_bytes(),
+            buf.into_bytes(),
             vec![0xc0],
         );
     }
@@ -127,7 +127,7 @@ mod tests {
         buf.write(72u8, 8);
         buf.write(1u8, 4);
         assert_eq!(
-            buf.to_bytes(),
+            buf.into_bytes(),
             vec![0x14, 0x81],
         );
     }
@@ -137,7 +137,7 @@ mod tests {
         let mut buf = BitBuffer::new();
         buf.write(1u8, 1);
         assert_eq!(
-            buf.to_bytes(),
+            buf.into_bytes(),
             vec![],
         );
 
@@ -146,7 +146,7 @@ mod tests {
         buf.write(0u8, 7);
         buf.write(1u8, 1);
         assert_eq!(
-            buf.to_bytes(),
+            buf.into_bytes(),
             vec![0x80],
         );
     }

@@ -23,6 +23,12 @@ pub struct MockStdout<'a> {
     term: Arc<Mutex<&'a mut MockTerminal>>,
 }
 
+impl Default for MockTerminal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockTerminal {
     pub fn new() -> Self {
         MockTerminal {

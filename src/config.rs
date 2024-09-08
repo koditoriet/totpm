@@ -36,7 +36,7 @@ impl Config {
         presence_verification: Option<PresenceVerificationMethod>,
     ) -> Self {
         Config {
-            tpm: tpm,
+            tpm,
             system_data_path: system_data_path.as_deref().map(absolute_path).unwrap_or(
                 if local {
                     local_path(&PathBuf::from(".local/state/totpm/system"))
