@@ -114,7 +114,7 @@ impl <'a> FprintDevice<'a> {
             true
         }).or(fail("fprintd: unable to listen for signal"))?;
 
-        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStart", ("any",))
+        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStart", ("any",))
             .or(fail("fprintd: unable to start fingerprint verification"))?;
 
         eprintln!("place your finger on the fingerprint reader");
@@ -129,15 +129,15 @@ impl <'a> FprintDevice<'a> {
             if let Some(status) = *scan_status_clone.lock().unwrap() {
                 match status {
                     Status::Match => {
-                        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+                        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
                             .or(fail("fprintd: unable to stop fingerprint verification"))?;
                         return Ok(true)
                     },
                     Status::NoMatch => {
                         eprintln!("fingerprint not recognized, try again");
-                        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+                        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
                             .or(fail("fprintd: unable to stop fingerprint verification"))?;
-                        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStart", ("any",))
+                        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStart", ("any",))
                             .or(fail("fprintd: unable to restart fingerprint verification"))?;
                     },
                     Status::RetryScan | Status::SwipeTooShort | Status::FingerNotCentered | Status::RemoveAndRetry => {
@@ -148,7 +148,7 @@ impl <'a> FprintDevice<'a> {
                         return fail("fprintd: fingerprint reader disconnected")
                     },
                     Status::UnknownError => {
-                        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+                        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
                             .or(fail("fprintd: unable to stop fingerprint verification"))?;
                         return fail("fprintd: fingerprint scan failed with unknown error")
                     },
@@ -156,7 +156,7 @@ impl <'a> FprintDevice<'a> {
     
             }
         }
-        self.proxy.method_call(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
+        self.proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "VerifyStop", ())
             .or(fail("fprintd: unable to stop fingerprint verification"))?;
         Ok(false)
     }
@@ -175,7 +175,7 @@ impl <'a> FprintDevice<'a> {
             device_path,
             Duration::from_secs(10),
         );
-        proxy.method_call(FPRINTD_DEVICE_IFACE, "Claim", ("",))
+        proxy.method_call::<(), _, _, _>(FPRINTD_DEVICE_IFACE, "Claim", ("",))
             .or(Err(super::Error::ImplementationSpecificError("fprintd: unable to claim device".to_owned())))?;
         Ok(FprintDevice { proxy, connection: conn })
     }    
