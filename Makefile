@@ -17,8 +17,18 @@ totpm-$(VERSION).tar.gz: $(SOURCES)
 totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm: totpm-$(VERSION).tar.gz
 	fedpkg --release f$(FEDORA_RELEASE) srpm
 
-totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm
-	fedpkg --release f$(FEDORA_RELEASE) mockbuild
+totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm: totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm fedora-builder/Dockerfile fedora-builder/storage.conf
+	podman build \
+		-t totpm-builder:$(FEDORA_RELEASE) \
+		--build-arg FEDORA_RELEASE=$(FEDORA_RELEASE) \
+		fedora-builder
+
+	podman run \
+		--privileged \
+		-v .:/build:rw,z \
+		totpm-builder:$(FEDORA_RELEASE) \
+		fedpkg --release f$(FEDORA_RELEASE) mockbuild
+
 	cp -a results_totpm/$(VERSION)/1.fc$(FEDORA_RELEASE)/totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).$(ARCH).rpm ./
 
 .PHONY: fedora-package
