@@ -75,7 +75,7 @@ impl <'a> DB<'a> {
         let mut stmt = self.transaction.prepare("
             SELECT id, service, account, digits, interval, public_data, private_data
             FROM secrets
-            WHERE service LIKE CONCAT('%', ?1, '%') AND ACCOUNT LIKE CONCAT('%', ?2, '%')
+            WHERE service LIKE ('%' || ?1 || '%') AND ACCOUNT LIKE ('%' || ?2 || '%')
         ")?;
         let secrets = stmt.query_map([service, account], to_secret)
             ?.filter_map(core::result::Result::ok);
