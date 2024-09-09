@@ -177,7 +177,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn init_creates_all_necessary_and_files_with_correct_permissions() {
+    fn init_creates_all_necessary_secrets_and_files_with_correct_permissions() {
         let swtpm = SwTpm::new();
         let dir = tempdir().unwrap();
         let cfg_path = dir.path().join("totpm.conf");
@@ -298,6 +298,6 @@ mod tests {
     }
 
     fn get_user_name() -> String {
-        std::env::var("USER").unwrap_or("root".to_string())
+        String::from_utf8(Command::new("whoami").output().unwrap().stdout).unwrap().trim().to_string()
     }
 }

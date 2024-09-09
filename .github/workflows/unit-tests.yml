@@ -1,0 +1,23 @@
+name: Run unit tests
+on: [push]
+jobs:
+    unit-tests:
+        runs-on: self-hosted
+        steps:
+            - run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+            - name: Check out repo
+              uses: actions/checkout@v4
+            - run: |
+                . "$HOME/.cargo/env"
+                cargo test
+                dbus-run-session cargo test --features=install,dbus-tests
+    clippy:
+        runs-on: self-hosted
+        steps:
+            - run: curl https://sh.rustup.rs -sSf | sh -s -- -y
+            - name: Check out repo
+              uses: actions/checkout@v4
+            - run: |
+                . "$HOME/.cargo/env"
+                cargo clippy
+                cargo clippy --features=install,dbus-tests
