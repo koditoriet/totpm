@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[test]
-    fn pick_one_warns_and_returns_nothing_on_invalid_selection() {
+    fn pick_one_retries_on_invalid_selection() {
         let mut term = MockTerminal::new()
             .expect_stdout("hello\n")
             .expect_stdout("0:\t[cancel]\n")

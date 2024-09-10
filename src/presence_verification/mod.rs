@@ -18,6 +18,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum PresenceVerificationMethod {
     Fprintd,
     None,
+    #[cfg(test)]
+    AlwaysFail,
 }
 
 impl FromStr for PresenceVerificationMethod {
