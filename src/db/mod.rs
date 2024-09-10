@@ -75,7 +75,8 @@ impl <'a> DB<'a> {
         let mut stmt = self.transaction.prepare("
             SELECT id, service, account, digits, interval, public_data, private_data
             FROM secrets
-            WHERE service LIKE ('%' || ?1 || '%') AND ACCOUNT LIKE ('%' || ?2 || '%')
+            WHERE service LIKE ('%' || ?1 || '%') AND account LIKE ('%' || ?2 || '%')
+            ORDER BY service, account ASC
         ")?;
         let secrets = stmt.query_map([service, account], to_secret)
             ?.filter_map(core::result::Result::ok);
@@ -162,6 +163,8 @@ fn ensure_tables_exist(tr: &Transaction) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
 
     #[test]
@@ -363,6 +366,42 @@ mod tests {
     }
 
     #[test]
+    fn list_secrets_return_value_is_sorted_alphabetically() {
+        let mut secret = Secret {
+            id: 0,
+            service: "x".to_owned(),
+            account: "x".to_owned(),
+            digits: 6,
+            interval: 30,
+            public_data: vec![],
+            private_data: vec![],
+        };
+        let db = tempfile::NamedTempFile::new().unwrap();
+        with_db(db.path(), |tx| {
+            tx.add_secret(secret.clone())?;
+            secret.service = "c".to_owned();
+            tx.add_secret(secret.clone())?;
+            secret.account = "c".to_owned();
+            tx.add_secret(secret.clone())?;
+            secret.service = "b".to_owned();
+            tx.add_secret(secret.clone())?;
+            secret.account = "b".to_owned();
+            tx.add_secret(secret.clone())?;
+            Ok(())
+        }).unwrap();
+
+        /* empty strings match all secrets */
+        let accounts = with_db(db.path(), |tx| tx.list_secrets("", "")).unwrap();
+        let account_names: Vec<(&str, &str)> = accounts.iter()
+            .map(|x| (x.service.as_ref(), x.account.as_ref()))
+            .collect();
+        assert_eq!(
+            account_names,
+            [("b", "b"), ("b", "c"), ("c", "c"), ("c", "x"), ("x", "x")]
+        );
+    }
+
+    #[test]
     fn list_secrets_returns_correct_secrets() {
         let mut secret = Secret {
             id: 0,
@@ -388,57 +427,57 @@ mod tests {
         }).unwrap();
 
         /* empty strings match all secrets */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", ""))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, all_ids);
+        assert_eq!(ids, HashSet::from_iter(all_ids.clone()));
 
         /* full match on service */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("service", ""))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("service", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[1], all_ids[2]]);
+        assert_eq!(ids, HashSet::from_iter([all_ids[1], all_ids[2]]));
 
         /* full match on account */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", "acct"))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", "acct"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[0], all_ids[1]]);
+        assert_eq!(ids, HashSet::from_iter([all_ids[0], all_ids[1]]));
 
         /* full match on both service and account */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("svc", "acct"))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("svc", "acct"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[0]]);
+        assert_eq!(ids, HashSet::from_iter([all_ids[0]]));
 
         /* partial match on service */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("tj", ""))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("tj", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[3]]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("c", ""))
+        assert_eq!(ids, HashSet::from_iter([all_ids[3]]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("c", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[0], all_ids[1], all_ids[2]]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("ce", ""))
+        assert_eq!(ids, HashSet::from_iter([all_ids[0], all_ids[1], all_ids[2]]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("ce", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[1], all_ids[2]]);
+        assert_eq!(ids, HashSet::from_iter([all_ids[1], all_ids[2]]));
 
         /* partial match on account */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", "acc"))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", "acc"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[0], all_ids[1], all_ids[2]]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", "cco"))
+        assert_eq!(ids, HashSet::from_iter([all_ids[0], all_ids[1], all_ids[2]]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", "cco"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[2]]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", "nto"))
+        assert_eq!(ids, HashSet::from_iter([all_ids[2]]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", "nto"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![all_ids[3]]);
+        assert_eq!(ids, HashSet::from_iter([all_ids[3]]));
 
         /* no match */
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("potato", ""))
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("potato", ""))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("", "potato"))
+        assert_eq!(ids, HashSet::from_iter([]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("", "potato"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![]);
-        let ids: Vec<i64> = with_db(db.path(), |tx| tx.list_secrets("potato", "potato"))
+        assert_eq!(ids, HashSet::from_iter([]));
+        let ids: HashSet<i64> = with_db(db.path(), |tx| tx.list_secrets("potato", "potato"))
             .unwrap().iter().map(|x| x.id).collect();
-        assert_eq!(ids, vec![]);
+        assert_eq!(ids, HashSet::from_iter([]));
     }
 
     #[test]
