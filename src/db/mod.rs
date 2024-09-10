@@ -5,6 +5,8 @@ use std::{fs::Permissions, os::unix::fs::PermissionsExt, path::Path};
 use model::Secret;
 use rusqlite::{params, Connection, Row, Transaction};
 
+const CURRENT_SCHEMA_VERSION: u32 = 1;
+
 pub struct DB<'a> {
     transaction: Transaction<'a>
 }
@@ -16,6 +18,7 @@ pub enum Error {
     NoSuchElement,
     DbDirIsNotADir,
     DbFileIsNotAFile,
+    UnknownSchemaVersion(u32),
 }
 
 impl From<rusqlite::Error> for Error {
@@ -100,7 +103,7 @@ pub fn with_db<P : AsRef<Path>, T, F: FnOnce(&DB) -> Result<T>>(db_path: P, f: F
 
     log::info!("starting transaction");
     let transaction = db.transaction()?;
-    ensure_tables_exist(&transaction)?;
+    ensure_schema_is_up_to_date(&transaction)?;
     let db = DB::new(transaction);
     let result = f(&db);
     if result.is_ok() {
@@ -145,8 +148,37 @@ fn to_secret(row: &Row) -> rusqlite::Result<Secret> {
     })
 }
 
-fn ensure_tables_exist(tr: &Transaction) -> Result<()> {
-    tr.execute("
+fn ensure_schema_is_up_to_date(tx: &Transaction) -> Result<()> {
+    let schema_version = schema_version(tx)?;
+    if schema_version > CURRENT_SCHEMA_VERSION {
+        return Err(Error::UnknownSchemaVersion(schema_version));
+    }
+    for v in schema_version .. CURRENT_SCHEMA_VERSION {
+        match v {
+            0 => create_secrets_table(tx)?,
+            _ => unreachable!(),
+        }
+    }
+    update_schema_version(tx, CURRENT_SCHEMA_VERSION)?;
+    Ok(())
+}
+
+fn update_schema_version(tx: &Transaction, schema_version: u32) -> Result<()> {
+    tx.execute("UPDATE __version SET version = ?1", params![schema_version])?;
+    Ok(())
+}
+
+fn schema_version(tx: &Transaction) -> Result<u32> {
+    if let Ok(v) = tx.query_row("SELECT version FROM __version", (),|row| row.get(0)) {
+        Ok(v)
+    } else {
+        create_version_table(tx)?;
+        Ok(0)
+    }
+}
+
+fn create_secrets_table(tx: &Transaction) -> std::result::Result<(), Error> {
+    tx.execute("
         CREATE TABLE IF NOT EXISTS secrets (
             id           INTEGER PRIMARY KEY,
             service      TEXT NOT NULL,
@@ -158,6 +190,22 @@ fn ensure_tables_exist(tr: &Transaction) -> Result<()> {
         )",
         (),
     )?;
+    Ok(())
+}
+
+fn create_version_table(tx: &Transaction) -> Result<()> {
+    tx.execute("
+        CREATE TABLE IF NOT EXISTS __version (
+            id      INTEGER PRIMARY KEY,
+            version INTEGER NOT NULL,
+            CHECK(id = 1)
+        )",
+        ()
+    )?;
+    let num_rows: u32 = tx.query_row("SELECT COUNT(version) FROM __version", (), |row| row.get(0))?;
+    if num_rows == 0 {
+        tx.execute("INSERT INTO __version (version) VALUES (0)", ())?;
+    }
     Ok(())
 }
 
@@ -181,8 +229,11 @@ mod tests {
             0o600,
         );
 
-        let result = with_db(&db, |tx| tx.list_secrets("", "")).unwrap();
-        assert_eq!(result, vec![]);
+        with_db(&db, |tx| {
+            assert_eq!(schema_version(&tx.transaction)?, CURRENT_SCHEMA_VERSION);
+            assert_eq!(tx.list_secrets("", "")?, vec![]);
+            Ok(())
+        }).unwrap();
     }
 
     #[test]

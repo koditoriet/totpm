@@ -27,6 +27,7 @@ pub fn run(
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
     use tempfile::{tempdir, TempDir};
     use testutil::tpm::SwTpm;
 
@@ -56,6 +57,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn presence_verification_happens_after_disambiguation() {
         let (_tpm, _dir, cfg) = setup();
         let mut failing_cfg = cfg.clone();
