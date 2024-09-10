@@ -47,6 +47,12 @@ fn fail(e: totpm::result::Error) {
         totpm::result::Error::RootRequired => {
             eprintln!("root permissions required");
         },
+        totpm::result::Error::SecretNotFound => {
+            eprintln!("service/account combination not found");
+        },
+        totpm::result::Error::AmbiguousSecret => {
+            eprintln!("more than one secret matched the given parameters");
+        },
     };
     exit(1);
 }

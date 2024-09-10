@@ -10,6 +10,8 @@ pub enum Error {
     SecretFormatError,
     InvalidPVMethod(String),
     RootRequired,
+    SecretNotFound,
+    AmbiguousSecret,
 }
 
 impl From<toml::ser::Error> for Error {
