@@ -2,7 +2,8 @@ name: Run unit tests
 on: [push]
 jobs:
     unit-tests:
-        runs-on: self-hosted
+        name: Unit tests
+        runs-on: [self-hosted, x64]
         steps:
             - run: curl https://sh.rustup.rs -sSf | sh -s -- -y
             - name: Check out repo
@@ -12,7 +13,8 @@ jobs:
                 cargo test
                 dbus-run-session cargo test --features=install,dbus-tests
     clippy:
-        runs-on: self-hosted
+        name: Clippy
+        runs-on: [self-hosted, x64]
         steps:
             - run: curl https://sh.rustup.rs -sSf | sh -s -- -y
             - name: Check out repo
