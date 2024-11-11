@@ -2,3 +2,5 @@
 /results_totpm
 *.rpm
 *.tar.gz
+.vscode
+

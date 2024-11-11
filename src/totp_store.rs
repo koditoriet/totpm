@@ -210,7 +210,14 @@ impl TotpStore<WithTPM> {
         })
     }
 
-    pub fn add(&mut self, service: &str, account: &str, digits: u8, interval: u32, secret: &[u8]) -> Result<Secret> {
+    pub fn add(
+        &mut self,
+        service: &str,
+        account: &str,
+        digits: Option<u8>,
+        interval: Option<u32>,
+        secret: &[u8]
+    ) -> Result<Secret> {
         let primary_key = *self.primary_key();
 
         log::info!("generating secret hmac key");
@@ -218,8 +225,8 @@ impl TotpStore<WithTPM> {
         let secret = Secret::new(
             service.to_owned(),
             account.to_owned(),
-            Some(digits),
-            Some(interval),
+            digits,
+            interval,
             hmac_key.public.marshall()?,
             hmac_key.private.to_vec(),
         );
@@ -365,8 +372,8 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
-        let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret1 = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
+        let secret2 = store.add("secondsvc", "secondacc", None, None, "hello".as_bytes()).unwrap();
         let secrets = store.list(None, None).unwrap();
         assert_eq!(secrets, vec![secret1, secret2]);
     }
@@ -376,8 +383,8 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
-        let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret1 = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
+        let secret2 = store.add("secondsvc", "secondacc", None, None, "hello".as_bytes()).unwrap();
         assert_eq!(store.list(Some("firstsvc"), None).unwrap(), vec![secret1.clone()]);
         assert_eq!(store.list(Some("first"), None).unwrap(), vec![secret1.clone()]);
         assert_eq!(store.list(Some("tsvc"), None).unwrap(), vec![secret1.clone()]);
@@ -399,8 +406,8 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret1 = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
-        let secret2 = store.add("secondsvc", "secondacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret1 = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
+        let secret2 = store.add("secondsvc", "secondacc", None, None, "hello".as_bytes()).unwrap();
         store.del(secret1.id).unwrap();
         let secrets = store.list(None, None).unwrap();
         assert_eq!(secrets, vec![secret2]);
@@ -411,7 +418,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         match store.del(secret.id + 1).unwrap_err() {
             Error::DBError(db::Error::NoSuchElement) => {},
             err => panic!("wrong error: {:#?}", err),
@@ -423,7 +430,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         store.gen(secret.id, SystemTime::now()).unwrap();
     }
 
@@ -432,7 +439,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config).unwrap();
-        let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         match store.gen(secret.id + 1, SystemTime::now()).unwrap_err() {
             Error::DBError(db::Error::NoSuchElement) => {},
             err => panic!("wrong error: {:#?}", err),
@@ -444,7 +451,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config.clone()).unwrap();
-        store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         drop(store);
 
         TotpStore::clear(config.clone(), true).unwrap();
@@ -478,7 +485,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config.clone()).unwrap();
-        let secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        let secret = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         drop(store);
         let secrets_db_backup = tempfile::NamedTempFile::new().unwrap();
         std::fs::copy(config.secrets_db_path(), secrets_db_backup.path()).unwrap();
@@ -499,7 +506,7 @@ mod tests {
         let (config, _tepmdir, _swtpm) = setup();
         TotpStore::init(config.clone()).unwrap();
         let mut store = TotpStore::with_tpm(config.clone()).unwrap();
-        let old_secret = store.add("firstsvc", "firstacc", 6, 30, "hello".as_bytes()).unwrap();
+        let old_secret = store.add("firstsvc", "firstacc", None, None, "hello".as_bytes()).unwrap();
         drop(store);
 
         TotpStore::clear(config.clone(), false).unwrap();

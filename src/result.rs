@@ -6,6 +6,7 @@ pub enum Error {
     ConfigReadError(toml::de::Error),
     ConfigWriteError(toml::ser::Error),
     TotpStoreError(totp_store::Error),
+    ImportFormatError(String),
     UserNotFoundError(String),
     SecretFormatError,
     InvalidPVMethod(String),

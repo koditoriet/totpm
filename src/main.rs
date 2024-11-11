@@ -53,6 +53,9 @@ fn fail(e: totpm::result::Error) {
         totpm::result::Error::AmbiguousSecret => {
             eprintln!("more than one secret matched the given parameters");
         },
+        totpm::result::Error::ImportFormatError(e) => {
+            eprintln!("unable to import secrets: {}", e);
+        },
     };
     exit(1);
 }
@@ -116,6 +119,13 @@ fn run_command(opts: Opts, config_path: &Path) -> Result<()> {
                 load_config(config_path)?,
                 service.as_deref(),
                 account.as_deref(),
+            )
+        },
+        #[cfg(feature = "import")]
+        totpm::args::Command::Import { file } => {
+            totpm::commands::import::run(
+                load_config(config_path)?,
+                &file
             )
         },
         totpm::args::Command::Init { tpm, system_data_path, user_data_path, user, presence_verification, local } => {

@@ -5,7 +5,9 @@ edition = "2021"
 license = "MIT"
 
 [features]
+default = ["import"]
 install = []
+import = ["dep:serde_json"]
 dbus-tests = ["testutil/dbus"]
 
 [dependencies]
@@ -17,6 +19,7 @@ rpassword = "7.3.1"
 rusqlite = "0.31.0"
 serde = "1.0.205"
 serde_derive = "1.0.205"
+serde_json = { version = "1.0.132", optional = true }
 stderrlog = "0.6.0"
 toml = "0.8.19"
 tss-esapi = "7.4.0"

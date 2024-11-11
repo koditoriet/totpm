@@ -8,8 +8,8 @@ pub fn run(
     config: Config,
     service: &str,
     account: &str,
-    digits: u8,
-    interval: u32,
+    digits: Option<u8>,
+    interval: Option<u32>,
     secret_on_stdin: bool,
 ) -> Result<()> {
     let secret = if secret_on_stdin {

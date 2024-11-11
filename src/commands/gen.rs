@@ -42,7 +42,7 @@ mod tests {
         let (_tpm, _dir, cfg) = setup();
         TotpStore::init(cfg.clone()).unwrap();
         let mut store = TotpStore::with_tpm(cfg.clone()).unwrap();
-        store.add("foo", "bar", 6, 30, &[0,0,0,0,0,0,0,0,0,0]).unwrap();
+        store.add("foo", "bar", None, None, &[0,0,0,0,0,0,0,0,0,0]).unwrap();
         run(cfg, "foo", None).unwrap();
     }
 
@@ -71,7 +71,7 @@ mod tests {
         }
 
         // If there is exactly one matching accounts, we should see PV happening and failing
-        TotpStore::with_tpm(cfg.clone()).unwrap().add("foo", "bar", 6, 30, &[0,0,0,0,0,0,0,0,0,0]).unwrap();
+        TotpStore::with_tpm(cfg.clone()).unwrap().add("foo", "bar", Some(6), Some(30), &[0,0,0,0,0,0,0,0,0,0]).unwrap();
         let error = run(failing_cfg.clone(), "foo", Some("bar")).unwrap_err();
         if let Error::TotpStoreError(TpmError(PresenceVerificationFailed)) = error {} else {
             panic!("wrong error: {:#?}", error)
