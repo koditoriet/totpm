@@ -138,7 +138,7 @@ mod tests {
         buf.write(1u8, 1);
         assert_eq!(
             buf.into_bytes(),
-            vec![],
+            vec![] as Vec<u8>,
         );
 
         let mut buf = BitBuffer::new();

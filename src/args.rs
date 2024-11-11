@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-
 use clap::{command, Parser, Subcommand};
+
 
 #[derive(Parser)]
 #[derive(Debug)]
@@ -31,12 +31,14 @@ pub enum Command {
         account: String,
 
         /// Number of security code digits.
-        #[arg(short, long, default_value = "6")]
-        digits: u8,
+        /// Defaults to 6; don't change unless you know what you're doing.
+        #[arg(short, long)]
+        digits: Option<u8>,
 
         /// How often to generate a new security code.
-        #[arg(short, long, default_value = "30")]
-        interval: u32,
+        /// Defaults to every 30 seconds; don't change unless you know what you're doing.
+        #[arg(short, long)]
+        interval: Option<u32>,
 
         /// Read secret from standard input instead of directly from tty.
         /// Only use this for non-interactive use cases, to avoid echoing secret to screen.
@@ -68,6 +70,26 @@ pub enum Command {
         account: Option<String>,
     },
 
+    /// Batch import secrets from file.
+    #[cfg(feature = "import")]
+    Import {
+        /// JSON file to import secrets from.
+        /// The file should consist of a single JSON object, mapping service names to secrets as follows:
+        ///
+        /// {
+        ///     "some_service": {
+        ///         "account": "my_account@example.com",
+        ///         "secret": "...",
+        ///         "digits": 6,
+        ///         "interval": 30
+        ///     }
+        /// }
+        ///
+        /// The `digits` and `interval` fields are optional, and will default to 6 and 30 respectively.
+        file: PathBuf,
+    },
+
+    /// Initialize the TOTP store.
     Init {
         /// TPM configuration to use.
         /// May be either "device", "device:/path/to/tpm", or "swtpm:host=...,port=..."
