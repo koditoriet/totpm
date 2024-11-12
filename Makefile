@@ -1,15 +1,16 @@
 VERSION = $(shell cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')
 SOURCES = $(shell find . -type f -name '*.rs') Cargo.toml Cargo.lock LICENSE totpm.spec totpm.sysusers testutil/Cargo.lock testutil/Cargo.toml Makefile totpm.conf
-FEDORA_RELEASE ?= 40
+FEDORA_RELEASE ?= 41
 ARCH ?= x86_64
 
 totpm-$(VERSION).tar.gz: $(SOURCES)
 	tar \
-		--exclude *.tar.gz \
-		--exclude .* \
+		--exclude '*.tar.gz' \
+		--exclude '.git*' \
+		--exclude '.vscode' \
 		--exclude target \
-		--exclude *.rpm \
-		--exclude results_* \
+		--exclude '*.rpm' \
+		--exclude 'results_*' \
 		--transform 's,^\(\.[^/]\+\),totpm-$(VERSION)/\1,' \
 		--transform 's,^\.,totpm-$(VERSION),' \
 		-czf totpm-$(VERSION).tar.gz .

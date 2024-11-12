@@ -1,6 +1,6 @@
 [package]
 name = "totpm"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
 
@@ -19,7 +19,7 @@ rpassword = "7.3.1"
 rusqlite = "0.31.0"
 serde = "1.0.205"
 serde_derive = "1.0.205"
-serde_json = { version = "1.0.132", optional = true }
+serde_json = { version = "1.0.128", optional = true }
 stderrlog = "0.6.0"
 toml = "0.8.19"
 tss-esapi = "7.4.0"

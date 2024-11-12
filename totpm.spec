@@ -5,7 +5,7 @@
 %global cargo_install_lib 0
 
 Name:           totpm
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        A TPM-backed command line TOTP client. Like Google Authenticator in your terminal.
 
