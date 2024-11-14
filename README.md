@@ -26,13 +26,13 @@ sudo usermod -a -G tss "$USER"
 
 ### Other Linux (system install)
 1. Clone the repository.
-2. Run `cargo build --release --features=install` to build the `totpm` binary.
-3. Run `./target/release/totpm init` to install `totpm` for all users on the system.
+2. Run `cargo install --features=install totpm` to build the `totpm` binary.
+3. Run `sudo ~/.cargo/bin/totpm init` to install `totpm` for all users on the system.
 
 
 ### Other Linux (local install)
 1. Clone the repository.
-2. Run `cargo install --release` to build and install the `totpm` binary.
+2. Run `cargo install totpm` to build and install the `totpm` binary.
 3. Run `totpm init --local` to set up `totpm` for the current user.
 
 
