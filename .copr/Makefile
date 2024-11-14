@@ -1,4 +1,4 @@
-FEDORA_RELEASE = $(shell cut -d' ' -f 3 /etc/fedora-release)
+FEDORA_RELEASE ?= $(shell cut -d' ' -f 3 /etc/fedora-release)
 
 .PHONY: srpm
 srpm:

@@ -4,16 +4,7 @@ FEDORA_RELEASE ?= 41
 ARCH ?= x86_64
 
 totpm-$(VERSION).tar.gz: $(SOURCES)
-	tar \
-		--exclude '*.tar.gz' \
-		--exclude '.git*' \
-		--exclude '.vscode' \
-		--exclude target \
-		--exclude '*.rpm' \
-		--exclude 'results_*' \
-		--transform 's,^\(\.[^/]\+\),totpm-$(VERSION)/\1,' \
-		--transform 's,^\.,totpm-$(VERSION),' \
-		-czf totpm-$(VERSION).tar.gz .
+	git archive --prefix=totpm-$(VERSION)/ HEAD | gzip > totpm-$(VERSION).tar.gz
 
 totpm-$(VERSION)-1.fc$(FEDORA_RELEASE).src.rpm: totpm-$(VERSION).tar.gz
 	fedpkg --release f$(FEDORA_RELEASE) srpm
