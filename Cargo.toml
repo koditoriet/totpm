@@ -1,8 +1,15 @@
 [package]
 name = "totpm"
+description = "A TPM-backed command line TOTP/2FA client, using fprintd for user presence verification."
 version = "0.1.2"
-edition = "2021"
+authors = ["Anton Ekblad <anton@ekblad.cc>"]
+readme = "README.md"
+repository = "https://github.com/koditoriet/totpm"
 license = "MIT"
+keywords = ["tpm", "2fa", "otp"]
+categories = ["command-line-utilities"]
+exclude = ["fedora-builder", "fedora-test", ".*", "totpm.conf", "totpm.spec", "totpm.sysusers", "Makefile"]
+edition = "2021"
 
 [features]
 default = ["import"]
